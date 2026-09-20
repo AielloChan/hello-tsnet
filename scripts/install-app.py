@@ -44,7 +44,7 @@ def install(source, destination, backup, launch):
     with (source / "Contents/Info.plist").open("rb") as file:
         info = plistlib.load(file)
     if info.get("CFBundleIdentifier") != "org.hellotsnet.app" or info.get("CFBundleExecutable") != "hello-tsnet":
-        raise RuntimeError("构建产物不是 hello-tsnet 应用。")
+        raise RuntimeError("构建产物不是 Hello TSNet 应用。")
     run(["/usr/bin/codesign", "--verify", "--strict", str(source)])
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_symlink() or (destination / "Contents").is_symlink():
@@ -81,7 +81,7 @@ def main():
     if sys.platform != "darwin":
         raise RuntimeError("安装需要 macOS。")
     root = Path(__file__).resolve().parent.parent
-    install(root / "dist/hello-tsnet.app", Path.home() / "Applications/hello-tsnet.app",
+    install(root / "dist/hello-tsnet.app", Path("/Applications/Hello TSNet.app"),
             root / "dist/hello-tsnet-installed.previous.tar", launch=not args.no_open)
 
 

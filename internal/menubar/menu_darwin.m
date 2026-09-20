@@ -13,7 +13,7 @@ extern void goMenuQuit(void);
 static void showError(NSString *message) {
     [NSApp activateIgnoringOtherApps:YES];
     NSAlert *alert = [NSAlert new];
-    alert.messageText = @"hello-tsnet 无法继续运行";
+    alert.messageText = @"Hello TSNet 无法继续运行";
     alert.informativeText = message;
     alert.alertStyle = NSAlertStyleWarning;
     [alert addButtonWithTitle:@"好"];
@@ -27,14 +27,14 @@ static void showError(NSString *message) {
     NSImage *icon = iconPath ? [[NSImage alloc] initWithContentsOfFile:iconPath] : nil;
     if (!icon) {
         // Also keep an identifiable icon when running the executable outside its bundle.
-        icon = [NSImage imageWithSystemSymbolName:@"circle.grid.3x3.fill" accessibilityDescription:@"hello-tsnet"];
+        icon = [NSImage imageWithSystemSymbolName:@"circle.grid.3x3.fill" accessibilityDescription:@"Hello TSNet"];
     }
     icon.size = NSMakeSize(20, 20);
     icon.template = NO;
     self.statusItem.button.image = icon;
-    self.statusItem.button.toolTip = @"hello-tsnet";
-    [self.statusItem.button setAccessibilityLabel:@"hello-tsnet"];
-    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"hello-tsnet"];
+    self.statusItem.button.toolTip = @"Hello TSNet";
+    [self.statusItem.button setAccessibilityLabel:@"Hello TSNet"];
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Hello TSNet"];
     menu.autoenablesItems = NO;
     NSArray *titles = @[@"关于", @"控制面板", @"退出应用"];
     SEL actions[] = {@selector(about:), @selector(controlPanel:), @selector(quit:)};
@@ -61,14 +61,14 @@ static void showError(NSString *message) {
             NSParagraphStyleAttributeName: paragraph
         }];
     [credits appendAttributedString:[[NSAttributedString alloc]
-        initWithString:@"查看设备 · 管理 TCP 转发\n基于官方 tsnet 构建"
+        initWithString:@"查看设备 · 管理端口转发\n基于官方 tsnet 构建"
         attributes:@{
             NSFontAttributeName: [NSFont systemFontOfSize:12 weight:NSFontWeightRegular],
             NSForegroundColorAttributeName: NSColor.secondaryLabelColor,
             NSParagraphStyleAttributeName: paragraph
         }]];
     [NSApp orderFrontStandardAboutPanelWithOptions:@{
-        NSAboutPanelOptionApplicationName: @"hello-tsnet",
+        NSAboutPanelOptionApplicationName: @"Hello TSNet",
         NSAboutPanelOptionApplicationVersion: version,
         NSAboutPanelOptionVersion: @"",
         NSAboutPanelOptionCredits: credits
@@ -85,7 +85,7 @@ static void showError(NSString *message) {
     if (self.quitting) { return; }
     self.quitting = YES;
     for (NSMenuItem *item in self.statusItem.menu.itemArray) { item.enabled = NO; }
-    self.statusItem.button.toolTip = @"hello-tsnet 正在退出…";
+    self.statusItem.button.toolTip = @"Hello TSNet 正在退出…";
     goMenuQuit();
 }
 

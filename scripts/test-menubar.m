@@ -15,7 +15,7 @@ static NSURL *openedURL;
 
 static BOOL containsApplicationName(NSView *view) {
     if ([view isKindOfClass:NSTextField.class] &&
-        [((NSTextField *)view).stringValue isEqualToString:@"hello-tsnet"]) { return YES; }
+        [((NSTextField *)view).stringValue isEqualToString:@"Hello TSNet"]) { return YES; }
     for (NSView *child in view.subviews) {
         if (containsApplicationName(child)) { return YES; }
     }

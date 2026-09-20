@@ -22,7 +22,7 @@ class InstallTests(unittest.TestCase):
     def test_update_stays_at_same_path_and_opens_exactly_once(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            source, destination = root / "build.app", root / "Applications/hello-tsnet.app"
+            source, destination = root / "build.app", root / "Applications/Hello TSNet.app"
             self.bundle(source, "new")
             self.bundle(destination, "old")
             (destination / "Contents/obsolete").write_text("old resource")
@@ -36,7 +36,7 @@ class InstallTests(unittest.TestCase):
     def test_failed_verification_restores_old_app_and_does_not_launch(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            source, destination = root / "build.app", root / "Applications/hello-tsnet.app"
+            source, destination = root / "build.app", root / "Applications/Hello TSNet.app"
             self.bundle(source, "new")
             self.bundle(destination, "old")
             calls = []

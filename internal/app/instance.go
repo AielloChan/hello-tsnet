@@ -19,7 +19,7 @@ func acquireInstance(path string) (*os.File, error) {
 	}
 	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		file.Close()
-		return nil, fmt.Errorf("hello-tsnet 已在运行，或无法锁定数据目录：%w", err)
+		return nil, fmt.Errorf("Hello TSNet 已在运行，或无法锁定数据目录：%w", err)
 	}
 	return file, nil
 }

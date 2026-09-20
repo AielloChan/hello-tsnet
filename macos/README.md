@@ -14,7 +14,7 @@ SIGINT、SIGTERM 和 macOS 正常终止请求也走关闭流程。数据目录�
 
 ## 固定路径更新
 
-暂存目录固定为 `dist/.app-build`，仅用于构建，从不执行其中的应用。构建完成后运行 `python3 scripts/install-app.py`，安装目标固定为 `~/Applications/hello-tsnet.app`。脚本只停止这个精确路径的进程，最多等候 12 秒，不强制终止；原位替换 Contents 前在 `dist/hello-tsnet-installed.previous.tar` 备份旧应用，验证失败时恢复包含执行权限的旧文件。
+暂存目录固定为 `dist/.app-build`，仅用于构建，从不执行其中的应用。构建完成后运行 `python3 scripts/install-app.py`，安装目标固定为 `/Applications/Hello TSNet.app`。脚本只停止这个精确路径的进程，最多等候 12 秒，不强制终止；原位替换 Contents 前在 `dist/hello-tsnet-installed.previous.tar` 备份旧应用，验证失败时恢复包含执行权限的旧文件。
 
 默认只通过 `open -a` 对固定绝对路径发起一次启动；`--no-open` 只更新。禁止按 bundle ID 查找并启动副本，禁止从构建、暂存、测试、备份目录启动真正的网关。安全软件拦截后不要自动重复启动，需要用户处理提示。固定路径和签名 identifier 能减少路径变化，但 ad-hoc 签名的内容哈希随版本变化，不能保证安全软件免于再次确认。
 
