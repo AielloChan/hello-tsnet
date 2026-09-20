@@ -1,0 +1,5 @@
+/hello-tsnet
+/dist/
+/.data/
+*.log
+.DS_Store

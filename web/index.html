@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>hello-tsnet</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <div>
+          <p class="eyebrow">LOCAL TAILNET GATEWAY</p>
+          <h1>hello-tsnet</h1>
+          <p class="lede">把本机端口轻量、安全地连接到 Tailscale 网络。</p>
+        </div>
+        <div id="status" class="status pending">正在启动</div>
+      </header>
+
+      <section id="auth-card" class="card auth-card" hidden>
+        <div>
+          <h2>连接到 Tailscale</h2>
+          <p>首次运行需要在官方页面授权这个独立节点。</p>
+        </div>
+        <a id="auth-link" class="primary" rel="noreferrer" target="_blank">打开授权页面</a>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <div>
+            <h2>端口映射</h2>
+            <p>所有本地端口仅监听 127.0.0.1。</p>
+          </div>
+          <button id="new-rule" class="secondary" type="button">新增映射</button>
+        </div>
+        <div id="empty" class="empty">还没有映射规则。</div>
+        <div class="table-wrap">
+          <table id="rules-table" hidden>
+            <thead>
+              <tr><th>名称</th><th>本机地址</th><th>Tailnet 目标</th><th></th></tr>
+            </thead>
+            <tbody id="rules"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <dialog id="rule-dialog">
+        <form id="rule-form" method="dialog">
+          <div class="dialog-title">
+            <h2 id="form-title">新增映射</h2>
+            <button id="close-dialog" type="button" class="icon" aria-label="关闭">×</button>
+          </div>
+          <input id="rule-id" type="hidden" />
+          <label>名称<input id="name" maxlength="80" required placeholder="Screen Sharing" /></label>
+          <label>本机端口<input id="port" type="number" min="1024" max="65535" required placeholder="30001" /></label>
+          <label>Tailnet 目标<input id="target" required placeholder="screen-share.example.net:5900" /></label>
+          <p id="form-error" class="error" role="alert"></p>
+          <div class="actions">
+            <button class="secondary" value="cancel" type="button" id="cancel">取消</button>
+            <button class="primary" type="submit">保存</button>
+          </div>
+        </form>
+      </dialog>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
