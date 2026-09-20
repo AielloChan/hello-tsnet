@@ -24,7 +24,7 @@ func New(options Options) (*App, error) {
 	service := rules.NewService(store, managerPreparer{manager: manager})
 	handler := web.NewHandler(options.WebAddress, service, func() web.Status {
 		return webStatus(runtime.Status())
-	})
+	}, runtime.Devices)
 	httpServer := &http.Server{
 		Addr:              options.WebAddress,
 		Handler:           handler,

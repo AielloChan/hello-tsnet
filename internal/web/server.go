@@ -42,7 +42,7 @@ type ruleInput struct {
 	Target    string `json:"target"`
 }
 
-func NewHandler(authority string, service RuleService, status func() Status) http.Handler {
+func NewHandler(authority string, service RuleService, status func() Status, devices DeviceReader) http.Handler {
 	_, port, err := net.SplitHostPort(authority)
 	if err != nil {
 		panic(fmt.Sprintf("invalid web authority %q: %v", authority, err))
@@ -53,6 +53,7 @@ func NewHandler(authority string, service RuleService, status func() Status) htt
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/devices", devicesHandler(devices))
 	mux.HandleFunc("OPTIONS /api/{rest...}", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})

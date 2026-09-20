@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tsnet"
 )
 
@@ -28,6 +29,7 @@ type Status struct {
 }
 
 type backend interface {
+	NetworkStatus(context.Context) (*ipnstate.Status, error)
 	Start() error
 	WaitReady(context.Context) error
 	Dial(context.Context, string, string) (net.Conn, error)

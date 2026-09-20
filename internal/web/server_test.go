@@ -50,7 +50,7 @@ func (s *fakeRuleService) Delete(id string) error {
 
 func TestRulesAPIListsAndCreatesRules(t *testing.T) {
 	service := &fakeRuleService{items: []config.Rule{{ID: "one", Name: "ssh", LocalPort: 30001, Target: "host:22"}}}
-	handler := NewHandler("127.0.0.1:6060", service, func() Status { return Status{State: StatePending} })
+	handler := NewHandler("127.0.0.1:6060", service, func() Status { return Status{State: StatePending} }, nil)
 
 	list := request(t, handler, http.MethodGet, "/api/rules", nil, false)
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), "host:22") {
@@ -64,7 +64,7 @@ func TestRulesAPIListsAndCreatesRules(t *testing.T) {
 }
 
 func TestRulesAPIEncodesEmptyListAsArray(t *testing.T) {
-	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return Status{} })
+	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return Status{} }, nil)
 	response := request(t, handler, http.MethodGet, "/api/rules", nil, false)
 	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != "[]" {
 		t.Fatalf("GET empty /api/rules = %d %q, want []", response.Code, response.Body.String())
@@ -73,7 +73,7 @@ func TestRulesAPIEncodesEmptyListAsArray(t *testing.T) {
 
 func TestRulesAPIUpdatesAndDeletesRules(t *testing.T) {
 	service := &fakeRuleService{}
-	handler := NewHandler("127.0.0.1:6060", service, func() Status { return Status{State: StateReady} })
+	handler := NewHandler("127.0.0.1:6060", service, func() Status { return Status{State: StateReady} }, nil)
 
 	update := request(t, handler, http.MethodPut, "/api/rules/rule-1", []byte(`{"name":"vnc","localPort":30001,"target":"mac-mini:5900"}`), true)
 	if update.Code != http.StatusOK || service.lastUpdated != "rule-1" {
@@ -87,7 +87,7 @@ func TestRulesAPIUpdatesAndDeletesRules(t *testing.T) {
 
 func TestDeleteAllowsAnEmptyBodyWithoutJSONContentType(t *testing.T) {
 	service := &fakeRuleService{}
-	handler := NewHandler("127.0.0.1:6060", service, func() Status { return Status{} })
+	handler := NewHandler("127.0.0.1:6060", service, func() Status { return Status{} }, nil)
 	req := httptest.NewRequest(http.MethodDelete, "http://127.0.0.1:6060/api/rules/rule-1", nil)
 	req.Host = "127.0.0.1:6060"
 	req.Header.Set("Origin", "http://127.0.0.1:6060")
@@ -100,7 +100,7 @@ func TestDeleteAllowsAnEmptyBodyWithoutJSONContentType(t *testing.T) {
 
 func TestRulesAPIReturnsNotFoundAndValidationErrors(t *testing.T) {
 	service := &fakeRuleService{updateErr: rules.ErrNotFound, deleteErr: rules.ErrNotFound}
-	handler := NewHandler("127.0.0.1:6060", service, func() Status { return Status{} })
+	handler := NewHandler("127.0.0.1:6060", service, func() Status { return Status{} }, nil)
 
 	invalid := request(t, handler, http.MethodPost, "/api/rules", []byte(`{"name":"","localPort":22,"target":"bad"}`), true)
 	if invalid.Code != http.StatusBadRequest {
@@ -117,7 +117,7 @@ func TestRulesAPIReturnsNotFoundAndValidationErrors(t *testing.T) {
 }
 
 func TestWriteRequestsRequireExactLocalOriginAndJSON(t *testing.T) {
-	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return Status{} })
+	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return Status{} }, nil)
 	body := []byte(`{"name":"ssh","localPort":30001,"target":"host:22"}`)
 
 	tests := []struct {
@@ -157,7 +157,7 @@ func TestWriteRequestsRequireExactLocalOriginAndJSON(t *testing.T) {
 }
 
 func TestWriteRequestBodyIsLimited(t *testing.T) {
-	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return Status{} })
+	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return Status{} }, nil)
 	large := []byte(`{"name":"` + strings.Repeat("x", 70<<10) + `","localPort":30001,"target":"host:22"}`)
 	response := request(t, handler, http.MethodPost, "/api/rules", large, true)
 	if response.Code != http.StatusRequestEntityTooLarge {
@@ -167,7 +167,7 @@ func TestWriteRequestBodyIsLimited(t *testing.T) {
 
 func TestStatusIsNoStoreAndHidesAuthURLWhenReady(t *testing.T) {
 	status := Status{State: StatePending, AuthURL: "https://login.tailscale.com/a/example"}
-	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return status })
+	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return status }, nil)
 
 	pending := request(t, handler, http.MethodGet, "/api/status", nil, false)
 	if pending.Header().Get("Cache-Control") != "no-store" || !strings.Contains(pending.Body.String(), status.AuthURL) {
@@ -181,7 +181,7 @@ func TestStatusIsNoStoreAndHidesAuthURLWhenReady(t *testing.T) {
 }
 
 func TestEmbeddedIndexIsServed(t *testing.T) {
-	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return Status{} })
+	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return Status{} }, nil)
 	response := request(t, handler, http.MethodGet, "/", nil, false)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "hello-tsnet") || !strings.Contains(response.Body.String(), `id="close-dialog" type="button"`) {
 		t.Fatalf("GET / = %d %s", response.Code, response.Body.String())

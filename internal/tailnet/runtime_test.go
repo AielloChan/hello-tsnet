@@ -9,15 +9,25 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"tailscale.com/ipn/ipnstate"
 )
 
 type fakeBackend struct {
+	networkStatus *ipnstate.Status
+	statusErr error
+	statusCalls int
 	startErr error
 	readyErr error
 	ready    chan struct{}
 	started  chan struct{}
 	closed   bool
 	mu       sync.Mutex
+}
+
+func (b *fakeBackend) NetworkStatus(context.Context) (*ipnstate.Status, error) {
+	b.statusCalls++
+	return b.networkStatus, b.statusErr
 }
 
 func newFakeBackend() *fakeBackend {

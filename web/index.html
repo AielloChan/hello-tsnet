@@ -25,15 +25,29 @@
         <a id="auth-link" class="primary" rel="noreferrer" target="_blank">打开授权页面</a>
       </section>
 
+      <section class="card" aria-labelledby="devices-title">
+        <div class="section-title">
+          <div>
+            <h2 id="devices-title">我的设备 <span id="device-count" class="count"></span></h2>
+            <p>选择设备，直接配置 TCP 转发。</p>
+          </div>
+          <button id="refresh-devices" class="secondary" type="button">刷新设备</button>
+        </div>
+        <label class="search-label"><span class="sr-only">搜索设备名称或 IP</span><input id="device-search" type="search" placeholder="搜索设备名称或 IP" /></label>
+        <p id="devices-notice" class="notice" role="status">正在读取设备…</p>
+        <div id="devices" class="devices"></div>
+        <p class="hint">仅显示当前节点可见的设备。在线状态不代表目标端口可连接。</p>
+      </section>
+
       <section class="card">
         <div class="section-title">
           <div>
-            <h2>端口映射</h2>
-            <p>所有本地端口仅监听 127.0.0.1。</p>
+            <h2>其他映射</h2>
+            <p>手动配置，或尚未关联到可见设备的映射。所有本机端口仅监听 127.0.0.1。</p>
           </div>
-          <button id="new-rule" class="secondary" type="button">新增映射</button>
+          <button id="new-rule" class="secondary" type="button">手动添加</button>
         </div>
-        <div id="empty" class="empty">还没有映射规则。</div>
+        <div id="empty" class="empty">没有其他映射。</div>
         <div class="table-wrap">
           <table id="rules-table" hidden>
             <thead>
@@ -43,6 +57,7 @@
           </table>
         </div>
       </section>
+      <p id="page-error" class="error" role="alert"></p>
 
       <dialog id="rule-dialog">
         <form id="rule-form" method="dialog">
@@ -51,9 +66,12 @@
             <button id="close-dialog" type="button" class="icon" aria-label="关闭">×</button>
           </div>
           <input id="rule-id" type="hidden" />
+          <p id="selected-device" class="selected-device" hidden></p>
+          <label>服务<select id="service"><option value="">自定义 TCP</option value="22">SSH · 22</option><option value="5900">屏幕共享 / VNC · 5900</option><option value="3389">远程桌面 / RDP · 3389</option></select></label>
           <label>名称<input id="name" maxlength="80" required placeholder="Screen Sharing" /></label>
           <label>本机端口<input id="port" type="number" min="1024" max="65535" required placeholder="30001" /></label>
-          <label>Tailnet 目标<input id="target" required placeholder="screen-share.example.net:5900" /></label>
+          <label>目标设备或地址<input id="target-host" required placeholder="设备 DNS 名称或 Tailscale IP" /></label>
+          <label>目标端口<input id="target-port" type="number" min="1" max="65535" required placeholder="5900" /></label>
           <p id="form-error" class="error" role="alert"></p>
           <div class="actions">
             <button class="secondary" value="cancel" type="button" id="cancel">取消</button>
