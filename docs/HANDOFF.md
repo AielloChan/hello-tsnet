@@ -1,4 +1,4 @@
-# hello-tsnet 研发交接
+# Hello TSNet 研发交接
 
 更新日期：2026-09-20
 
@@ -15,13 +15,16 @@
 
 - MVP 已实现、测试、独立 review、真实授权和真实 VNC 验收。
 - 当前方案是一个原生 arm64 Go 进程，不依赖 OrbStack、Docker、系统扩展或 TUN。
+- 应用显示名已统一为 **Hello TSNet**，安装路径为 `/Applications/Hello TSNet.app`。原用户目录副本已移至项目 `dist/hello-tsnet-user-install-<时间>.app` 备份；后续只更新系统应用目录的固定路径。bundle ID、可执行文件名和用户数据目录保持不变。
 - tsnet 节点名为 `hello-tsnet`，已完成 Tailscale 官方浏览器授权。
 - 当前规则为 `127.0.0.1:30001 → screen-share.example.net:5900`，Screen Sharing 连接地址是 `vnc://127.0.0.1:30001`。
 - 管理页面为 `http://127.0.0.1:6060`，规则可在 Web UI 中动态新增、编辑和删除，不需要改代码或重启。
 - 旧 Docker 容器 `ts-gateway` 已停止但未删除，只作为短期回滚点。它与原生进程不能同时占用 30001。
 - 已增加 macOS 菜单栏应用 `dist/hello-tsnet.app`：粉白点阵图标，以及“关于”“控制面板”“退出应用”三个菜单；控制面板复用默认浏览器中的本地 Web UI。应用由 Launch Services 启动后不依赖终端会话。项目没有登录自启，macOS 重启后需重新打开应用。
-- 本机安装位置固定为 `~/Applications/hello-tsnet.app`。0.3.0 已更新到该位置；首次启动约 9 秒后被 SIGKILL。用户返回后明确要求再试一次，14:16 从相同路径重开，约 11 秒后再次被 SIGKILL，6060/30001 均未监听，当前未运行。时间上符合用户安全软件的倒计时拦截，但未直接确认来源；等待用户处理拦截并打开后继续真实设备验收，禁止自动反复启动。
-- 0.3.0 已实现设备列表与按设备配置转发：设备名称、系统、地址、在线/离线/未知/授权过期，搜索、已有规则分组、SSH/VNC/RDP 预设。自动测试与模拟数据浏览器验收已通过；新版真实设备数量、状态及转发尚待应用成功启动后验收。
+- 本机安装位置固定为 `/Applications/Hello TSNet.app`。0.5.0 已更新到该位置，本次使用 `--no-open` 未主动启动。此前 0.3.0 在原用户目录 `~/Applications/hello-tsnet.app` 首次启动约 9 秒后被 SIGKILL；用户明确要求重试后，14:16 从原路径重开约 11 秒后再次被 SIGKILL，6060/30001 均未监听。时间上符合用户安全软件的倒计时拦截，但未直接确认来源；等待用户处理拦截并打开后继续真实设备验收，禁止自动反复启动。
+- 0.3.0 已实现设备列表与按设备配置转发：设备名称、系统、地址、在线/离线/未知/授权过期，搜索、已有规则分组；0.5.0 已移除服务预设下拉，改为端口提示。自动测试与模拟数据浏览器验收已通过；新版真实设备数量、状态及转发尚待应用成功启动后验收。
+- 0.4.0 已加入 TCP、UDP、TCP + UDP 配置，新建默认两者、旧规则保持 TCP。自动测试、模拟界面验收、构建签名与独立只读 review 通过；真实 tailnet UDP 尚待手工验收。
+- 0.5.0 已加入“共享本机服务”：填写名称、同号端口和协议，其他设备可经 tsnet 节点访问本机服务。自动化本机 socket 测试、模拟浏览器验收、独立 review 与构建安装已通过；真实 tailnet 入站访问待手工验收，未主动启动。
 - “关于”窗口保留 macOS 标准面板，说明文字水平居中：14 pt 中等字重的主说明、12 pt 次要说明，使用随浅色/深色模式变化的系统文字色，并调整行距与段距。此次样式更新只构建和安装，不主动启动；窗口实际显示待用户解除拦截后验收。
 
 ## 为什么仍需本地端口映射
@@ -74,7 +77,7 @@ Web API
   → 后台等待 tailnet ready
 ```
 
-规则文件损坏或恢复失败时，进程保留原文件并退出，不会按空配置覆盖。tsnet Start 失败时，Web 保持可用并显示 error。
+规则文件损坏或恢复失败时，进程保留原文件并退出，不会按空配置覆盖。tsnet Start 失败时，Web 保持可用并显示 error。恢复 inbound listener 会通过 tsnet.Listen 隐式 Start（不等待授权）；后续 Runtime.Start 保留已捕获的授权 URL。恢复失败会有界关闭 Manager 和 Runtime，释放隐式启动资源。
 
 关闭顺序：
 
@@ -92,7 +95,7 @@ Web API
 - `internal/app`：唯一装配入口、启动顺序和有界关闭。
 - `internal/config`：规则模型、校验、版本化 JSON 和原子持久化。
 - `internal/rules`：唯一写入口和 Prepare → Save → Commit 编排。
-- `internal/forward`：loopback listener、规则快照、30 秒连接级拨号超时、双向 TCP 半关闭。
+- `internal/forward`：loopback/tsnet listener、规则快照、30 秒连接级拨号超时、双向 TCP 半关闭与有界 UDP 会话。
 - `internal/tailnet`：tsnet 生命周期、官方授权 URL 捕获、pending/ready/error 状态和 Dial 适配。
 - `internal/web`：loopback HTTP API、Host/Origin 校验、body 上限和嵌入式静态页面。
 - `web`：无框架、无构建步骤的 HTML/CSS/JavaScript，通过 `go:embed` 进入二进制。
@@ -128,15 +131,35 @@ POST/PUT JSON：
 {
   "name": "Screen Sharing",
   "localPort": 30001,
-  "target": "screen-share.example.net:5900"
+  "target": "screen-share.example.net:5900",
+  "protocol": "tcp",
+  "direction": "outbound"
 }
 ```
 
 - POST/PUT 需要 `Content-Type: application/json`，body 上限 64 KiB。
 - DELETE 不需要 body 或 Content-Type，但仍必须通过 Host 和 Origin 校验。
-- 本机端口范围是 1024–65535；端口和规则 ID 必须唯一。
-- target 必须是 `host:port`；支持 MagicDNS 名称、Tailscale IP 和带方括号的 IPv6。
+- outbound 本机端口范围为 1024–65535，inbound 为 1–65535；数字端口跨方向唯一，规则 ID 也必须唯一。
+- outbound target 必须是 `host:port`；支持 MagicDNS 名称、Tailscale IP 和带方括号的 IPv6。inbound 不传 target，服务端固定派生为 `127.0.0.1:同端口`。
 - 同一个本机端口只能映射一个目标；目标变更会复用 listener，不中断无关规则。
+
+### 转发协议
+
+规则 `protocol` 支持 `tcp`、`udp`、`both`。POST 省略时默认 both；PUT 省略时保留旧规则协议。旧内存规则缺字段按 TCP 处理；界面新建默认 TCP + UDP，编辑旧规则保持 TCP。数字本机端口仍跨规则唯一。
+
+协调器按 `(方向, 协议, 端口)` 准备所有 TCP/UDP socket，仅在 Save 成功后一次发布目标快照。UDP socket 绑定后先不读取，Commit 后才启动；失败/Abort 释放全部暂存 socket。协议删减、规则删除、目标变更会取消对应旧 UDP 会话，目标切换不重绑仍使用的 socket。退出时取消 UDP 拨号与会话；关停后的 Commit 只关闭暂存 socket，不启动新 listener。
+
+UDP 使用 tsnet `Dial(ctx, "udp", target)`，每个本机源地址/端口一个连接，保留报文边界及零长度报文。空闲 60 秒回收，每 listener 最多 128 个会话，每会话队列 8 个报文，超限丢弃；目标连接写入设置 5 秒超时，拨号最长 30 秒。返回本机的共享 UDP socket 共用写入期限，可能被其他客户端刷新，不作为每次写入独立的严格 5 秒上限。一端暂不可达只影响对应会话。单报文实际大小还受操作系统和路径 MTU 限制，不保证交付。
+
+### 共享本机服务（0.5.0）
+
+界面保留“我的设备”的 outbound 规则，另设“共享本机服务”。共享表单仅名称、本机端口、协议，默认 both，端口不预填；服务预设下拉已移除，端口框下显示灰色常用端口提示。
+
+POST 示例：`{"name":"开发服务","localPort":8000,"protocol":"both","direction":"inbound"}`。流量路径是 `其他设备 → hello-tsnet:8000 → 127.0.0.1:8000`；对端需有访问授权，本机服务必须监听 IPv4 loopback 或包含它的地址。`GET /api/status` 的 hostname 返回配置的节点名，用于显示访问地址；不等同于验证过的 MagicDNS 名称（若后台重命名或名称冲突，应以 Tailscale 实际节点地址为准）。
+
+使用固定依赖 tsnet.Server.Listen("tcp"/"udp", ":端口") 在节点上监听。tsnet 的 UDP listener.Accept 返回每流的保留报文边界 net.Conn；不可替换成需要已分配节点 IP 的 ListenPacket wildcard。Prepare 仅注册，不 Accept；Save 后 Commit 才接流量。共享目标使用系统 net.Dialer 拨号 loopback，访问远端仍使用 Runtime.Dial。
+
+每个共享协议 listener 最多 128 个连接/会话，超限关闭新连接；UDP 双向活动延长 60 秒空闲期限，每次写入最长 5 秒，保留空报文。删除/删减协议会取消该 listener 的全部共享连接。管理端口在 app 装配层拒绝共享（默认 6060，亦覆盖自定义管理端口），保持管理 API 仅本机访问。管理监听端口必须为固定的 1–65535，拒绝端口 0，避免实际分配端口与共享保护值不一致。
 
 ### 可见设备
 
@@ -144,7 +167,11 @@ POST/PUT JSON：
 
 请求有 5 秒超时，响应 `Cache-Control: no-store`，受现有 Host 白名单保护。未就绪、读取失败、后端非 Running 或本节点未连接控制面时返回 503，而不是空数组。`Online` 为假且没有最后在线证据时显示 unknown；已过期节点显示 expired。前端每 10 秒刷新，失败保留上次设备列表并统一显示未知；真实空列表只有成功返回 `[]` 时成立。
 
-已有规则按完整 DNS、无歧义短 DNS、IPv4/IPv6 归属；多台设备同名时不猜测，保留在“其他映射”。保存仍复用原有规则 API 与协调器，不改变规则文件格式。规则请求用序号丢弃过期响应，避免旧刷新覆盖刚保存的列表。
+映射表保留名称列最小宽度和单行操作按钮，长地址保持完整；超宽时仅表格内横向滚动。
+
+从设备卡片新增映射时自动绑定当前设备，目标地址输入框隐藏并禁用，仅需填写名称、本机端口、目标端口和协议；编辑已有规则时保留地址修改能力。
+
+已有规则按完整 DNS、无歧义短 DNS、IPv4/IPv6 归属；多台设备同名时不猜测，保留在设备区的“未关联设备的转发”。保存仍复用原有规则 API 与协调器，不改变规则文件的原子保存流程。规则请求用序号丢弃过期响应，避免旧刷新覆盖刚保存的列表。
 
 ## 持久化和敏感数据
 
@@ -157,17 +184,19 @@ POST/PUT JSON：
 └── tsnet/            # 0700，包含节点身份和 Tailscale 状态
 ```
 
-`rules.json` 当前版本为 1：
+`rules.json` 当前写入版本为 3；读取 version 1 时只在内存补全 TCP，version 1/2 补全 outbound，不主动重写文件。version 2 要求每条规则显式指定协议；version 3 同时要求显式方向和协议。旧二进制不能读取新版本；回滚时需恢复对应旧规则备份，不能只修改版本号：
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "rules": [
     {
       "id": "随机 128-bit 十六进制 ID",
       "name": "Screen Sharing",
       "localPort": 30001,
-      "target": "screen-share.example.net:5900"
+      "target": "screen-share.example.net:5900",
+      "protocol": "tcp",
+      "direction": "outbound"
     }
   ]
 }
@@ -201,7 +230,7 @@ env -u GOROOT GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org \
 ./dist/hello-tsnet
 ```
 
-菜单栏版本使用 `./scripts/build-app.sh` 构建，运行 `python3 scripts/install-app.py` 更新并从固定路径 `~/Applications/hello-tsnet.app` 启动一次。可用 `--no-open` 只更新。不要运行 `dist/` 或随机暂存路径中的应用，也不要按 bundle ID 查找副本，避免触发用户安全软件反复确认。固定路径不能保证新内容哈希免于重新审批；被拦截时等待用户处理，不循环重试。
+菜单栏版本使用 `./scripts/build-app.sh` 构建，运行 `python3 scripts/install-app.py` 更新并从固定路径 `/Applications/Hello TSNet.app` 启动一次。可用 `--no-open` 只更新。不要运行 `dist/` 或随机暂存路径中的应用，也不要按 bundle ID 查找副本，避免触发用户安全软件反复确认。固定路径不能保证新内容哈希免于重新审批；被拦截时等待用户处理，不循环重试。
 
 两个入口使用同一数据目录，不能同时运行；新版入口通过文件锁拦截重复启动。退出菜单、SIGTERM 和系统正常退出请求都会关闭网关，锁文件保留但锁自动释放。安装脚本保留 `dist/hello-tsnet-installed.previous.tar`，失败恢复旧文件；不会自动启动回滚副本。现有 CLI 入口仍可使用，但本机验收默认只运行固定安装的 `.app`。
 
@@ -274,14 +303,14 @@ env -u GOROOT GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org \
 
 ## 明确限制
 
-- 仅支持 TCP；没有 UDP。
+- 支持 TCP/UDP；不支持 UDP 广播、多播或自动服务发现。
 - macOS 不能直接访问 tailnet `100.x` 地址；非 tsnet 应用必须使用本地映射。
 - 没有 SOCKS5/HTTP 代理 UI；支持代理的应用若需要可作为独立后续能力评估。
 - 已有固定路径安装脚本；没有 LaunchAgent、图形安装器、自动升级、Developer ID 签名或 notarization。菜单栏应用已有本机 ad-hoc 签名，当前构建目标为本机架构、macOS 15+，未验证 Intel 或更早系统。
 - 没有结构化日志、指标、连通性诊断或规则导入导出。
 - 没有 LAN/远程 Web 管理和多用户认证。
 - 本地端口冲突会拒绝整次变更，保留此前工作规则；不会自动挑选其他端口。
-- 现有自动测试没有单独覆盖 Add/Delete 混合并发、Service.Restore 装配失败，以及真实活跃连接超过 5 秒后的强制关闭；实现计划中保留了 3 个未完成复选框，后续修改这些路径前应先补回归。
+- 现有自动测试没有单独覆盖 Add/Delete 混合并发以及真实活跃连接超过 5 秒后的强制关闭；0.5.0 已补 Service.Restore 装配失败后的有界 Manager/Runtime 清理回归。历史 MVP 计划中的未完成复选框不代表后续新增测试缺失。
 
 ## 后续研发优先级
 
