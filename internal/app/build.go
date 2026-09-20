@@ -3,6 +3,7 @@ package app
 import (
 	"net"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"hello-tsnet/internal/config"
@@ -31,6 +32,7 @@ func New(options Options) (*App, error) {
 		IdleTimeout:       60 * time.Second,
 	}
 	return &App{
+		InstancePath:    filepath.Join(options.DataDir, "instance.lock"),
 		Address:         options.WebAddress,
 		Listen:          net.Listen,
 		Loader:          store,

@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+clang -fobjc-arc -fblocks -framework AppKit scripts/test-menubar.m -o "$scratch/test-menubar"
+"$scratch/test-menubar"

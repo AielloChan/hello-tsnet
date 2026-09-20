@@ -34,6 +34,7 @@ type HTTPServer interface {
 }
 
 type App struct {
+	InstancePath    string
 	Address         string
 	Listen          func(network, address string) (net.Listener, error)
 	Loader          Loader
@@ -45,6 +46,13 @@ type App struct {
 }
 
 func (a *App) Run(ctx context.Context) error {
+	if a.InstancePath != "" {
+		lock, err := acquireInstance(a.InstancePath)
+		if err != nil {
+			return err
+		}
+		defer lock.Close()
+	}
 	listener, err := a.Listen("tcp", a.Address)
 	if err != nil {
 		return fmt.Errorf("listen for web UI: %w", err)
