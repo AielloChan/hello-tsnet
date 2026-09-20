@@ -49,11 +49,29 @@ static void showError(NSString *message) {
 - (void)about:(id)sender {
     [NSApp activateIgnoringOtherApps:YES];
     NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"开发版";
+    NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
+    paragraph.alignment = NSTextAlignmentCenter;
+    paragraph.lineSpacing = 4;
+    paragraph.paragraphSpacing = 10;
+    NSMutableAttributedString *credits = [[NSMutableAttributedString alloc]
+        initWithString:@"轻量的 Tailscale 转发网关\n"
+        attributes:@{
+            NSFontAttributeName: [NSFont systemFontOfSize:14 weight:NSFontWeightMedium],
+            NSForegroundColorAttributeName: NSColor.labelColor,
+            NSParagraphStyleAttributeName: paragraph
+        }];
+    [credits appendAttributedString:[[NSAttributedString alloc]
+        initWithString:@"查看设备 · 管理 TCP 转发\n基于官方 tsnet 构建"
+        attributes:@{
+            NSFontAttributeName: [NSFont systemFontOfSize:12 weight:NSFontWeightRegular],
+            NSForegroundColorAttributeName: NSColor.secondaryLabelColor,
+            NSParagraphStyleAttributeName: paragraph
+        }]];
     [NSApp orderFrontStandardAboutPanelWithOptions:@{
         NSAboutPanelOptionApplicationName: @"hello-tsnet",
         NSAboutPanelOptionApplicationVersion: version,
         NSAboutPanelOptionVersion: @"",
-        NSAboutPanelOptionCredits: [[NSAttributedString alloc] initWithString:@"轻量的本机 TCP → Tailscale 转发网关\n\n独立应用，基于官方 tsnet 构建。"]
+        NSAboutPanelOptionCredits: credits
     }];
 }
 
