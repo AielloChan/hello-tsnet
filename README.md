@@ -18,6 +18,29 @@
 
 暂不支持 UDP、局域网暴露、远程管理和多用户。
 
+## macOS 应用
+
+在 macOS 15 或更新版本上构建菜单栏应用（需要 Go 和 Xcode Command Line Tools）：
+
+```bash
+./scripts/build-app.sh
+python3 scripts/install-app.py
+```
+
+安装脚本固定更新 `~/Applications/hello-tsnet.app` 并只启动一次。之后始终打开这个固定路径，不从构建目录、暂存目录或历史副本运行。脚本会先停止该路径的旧实例，备份并更新后校验签名；更新失败则恢复旧文件，不自动重试启动。只更新不启动可加 `--no-open`。
+
+菜单栏显示粉白点阵图标，提供“关于”“控制面板”“退出应用”三个菜单；控制面板通过默认浏览器打开。应用不显示 Dock 图标，关闭浏览器或关于窗口不会停止转发。
+
+应用复用下文的身份与规则目录。首次切换前请先停止旧命令行进程，避免端口占用；选择“退出应用”会同时停止网关。当前采用本机 ad-hoc 签名，未做 Developer ID 签名、公证或登录自启。实现与构建说明见 [`macos/README.md`](macos/README.md)。
+
+## 从设备配置转发
+
+控制面板列出当前节点可见的设备，显示系统、Tailscale IP、DNS 名称、在线/离线/状态未知及可用的最后在线时间，支持按名称或 IP 搜索。设备状态每 10 秒刷新；读取失败保留上次列表并标为未知。
+
+点击设备旁的“添加转发”，自动填写目标地址并建议一个未被已有规则使用的本机端口。可选择 SSH、屏幕共享/VNC、远程桌面/RDP，或自定义 TCP 端口。保存后映射显示在对应设备下，支持编辑和删除；无法明确归属的规则保留在“其他映射”。端口是否被其他进程占用仍在保存时校验。
+
+设备数据来自已登录 tsnet 的本地接口，不需要管理后台 API Key。可见设备不等于有权访问全部端口，设备在线也不等于服务可连接。
+
 ## 构建
 
 需要 Go 1.27.1 或更高版本：
@@ -84,7 +107,7 @@ vnc://127.0.0.1:30001
 - 转发规则存储在 `~/Library/Application Support/hello-tsnet/rules.json`。
 - 管理页面默认地址为 `http://127.0.0.1:6060`。
 - 所有映射端口固定监听 `127.0.0.1`，不能从局域网直接访问。
-- 管理 API 校验精确 Host 和同源 Origin，不启用 CORS。
+- 管理 API 只接受当前监听端口的 `127.0.0.1`/`localhost` Host 与 HTTP Origin 白名单，不启用 CORS。
 - 目标服务是否可访问仍由 tailnet ACL/grants 控制。
 
 ## 开发验证
@@ -96,6 +119,10 @@ node --check web/app.js
 ```
 
 验收记录见 [`docs/acceptance.md`](docs/acceptance.md)，实现计划见 [`docs/superpowers/plans/2026-09-20-hello-tsnet-mvp.md`](docs/superpowers/plans/2026-09-20-hello-tsnet-mvp.md)。
+
+## 研发交接
+
+后续 agent 开始开发、运维或发布前，先阅读 [`docs/HANDOFF.md`](docs/HANDOFF.md)。该文档包含当前运行状态、架构边界、API、持久化格式、安全约束、验证证据、回滚步骤和后续研发清单。
 
 ## 资料
 

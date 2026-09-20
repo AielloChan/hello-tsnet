@@ -4,6 +4,8 @@
 
 `hello-tsnet` 是一个仅运行在当前用户空间的 macOS TCP 转发网关。它通过官方 `tailscale.com/tsnet` 嵌入 Tailscale，不安装系统扩展、网络接口或后台守护进程。
 
+继续开发、运行维护、发布或排查前，先阅读 [`docs/HANDOFF.md`](docs/HANDOFF.md)。该文档是当前运行状态、关键设计决策、验证证据、回滚方式和后续工作的入口。
+
 ## 工程约束
 
 - 使用 Go 标准库和官方 `tailscale.com/tsnet`，除非确有必要，不增加第三方依赖。
