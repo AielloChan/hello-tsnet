@@ -22,7 +22,7 @@ func TestStoreLoadMissingFileReturnsEmptyRules(t *testing.T) {
 func TestStoreSaveRoundTripsWithPrivatePermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rules.json")
 	store := NewStore(path)
-	rules := []Rule{{ID: "one", Name: "Screen Sharing", LocalPort: 30001, Target: "screen-share.example.net:5900"}}
+	rules := []Rule{{ID: "one", Name: "Screen Sharing", LocalPort: 30001, Target: "screen-share.example.net:5900", Protocol: ProtocolTCP, Direction: DirectionOutbound}}
 
 	if err := store.Save(rules); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -46,8 +46,8 @@ func TestStoreSaveRoundTripsWithPrivatePermissions(t *testing.T) {
 func TestStoreSaveReplacesExistingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rules.json")
 	store := NewStore(path)
-	first := []Rule{{ID: "one", Name: "one", LocalPort: 30001, Target: "host:22"}}
-	second := []Rule{{ID: "two", Name: "two", LocalPort: 30002, Target: "host:80"}}
+	first := []Rule{{ID: "one", Name: "one", LocalPort: 30001, Target: "host:22", Protocol: ProtocolTCP, Direction: DirectionOutbound}}
+	second := []Rule{{ID: "two", Name: "two", LocalPort: 30002, Target: "host:80", Protocol: ProtocolTCP, Direction: DirectionOutbound}}
 
 	if err := store.Save(first); err != nil {
 		t.Fatalf("first Save() error = %v", err)

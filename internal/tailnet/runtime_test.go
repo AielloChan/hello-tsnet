@@ -154,3 +154,20 @@ func waitForState(t *testing.T, runtime *Runtime, want State) {
 	}
 	t.Fatalf("state = %q, want %q", runtime.Status().State, want)
 }
+
+func (b *fakeBackend) Listen(network, address string) (net.Listener, error) {
+	return nil, errors.New(network + " " + address)
+}
+
+func TestListenDelegatesWithoutWaitingForReady(t *testing.T) {
+	runtime := newRuntime(newFakeBackend())
+	if _,err := runtime.Listen("udp", ":8000"); err == nil || err.Error() != "udp :8000" { t.Fatalf("Listen = %v",err) }
+}
+
+func TestStartPreservesLoginURLCapturedWhileRestoringShares(t *testing.T) {
+	runtime := newRuntime(newFakeBackend())
+	runtime.userLogf("https://login.tailscale.com/a/example-token")
+	ctx,cancel:=context.WithCancel(context.Background()); defer cancel()
+	if err:=runtime.Start(ctx);err!=nil{t.Fatal(err)}
+	if runtime.Status().AuthURL==""{t.Fatal("Start discarded login URL")}
+}

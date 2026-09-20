@@ -24,6 +24,7 @@ const (
 )
 
 type Status struct {
+	Hostname string `json:"hostname,omitempty"`
 	State   string `json:"state"`
 	AuthURL string `json:"authUrl,omitempty"`
 	Error   string `json:"error,omitempty"`
@@ -31,8 +32,8 @@ type Status struct {
 
 type RuleService interface {
 	List() []config.Rule
-	Add(name string, localPort int, target string) (config.Rule, error)
-	Update(id, name string, localPort int, target string) (config.Rule, error)
+	Add(name string, localPort int, target string, protocol config.Protocol, direction config.Direction) (config.Rule, error)
+	Update(id, name string, localPort int, target string, protocol config.Protocol, direction config.Direction) (config.Rule, error)
 	Delete(id string) error
 }
 
@@ -40,6 +41,8 @@ type ruleInput struct {
 	Name      string `json:"name"`
 	LocalPort int    `json:"localPort"`
 	Target    string `json:"target"`
+	Protocol config.Protocol `json:"protocol"`
+	Direction config.Direction `json:"direction"`
 }
 
 func NewHandler(authority string, service RuleService, status func() Status, devices DeviceReader) http.Handler {
@@ -72,11 +75,7 @@ func NewHandler(authority string, service RuleService, status func() Status, dev
 		if !ok {
 			return
 		}
-		if _, err := config.NewRule(input.Name, input.LocalPort, input.Target); err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		rule, err := service.Add(input.Name, input.LocalPort, input.Target)
+		rule, err := service.Add(input.Name, input.LocalPort, input.Target, input.Protocol, input.Direction)
 		if err != nil {
 			writeServiceError(w, err)
 			return
@@ -91,11 +90,7 @@ func NewHandler(authority string, service RuleService, status func() Status, dev
 		if !ok {
 			return
 		}
-		if _, err := config.NewRule(input.Name, input.LocalPort, input.Target); err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		rule, err := service.Update(request.PathValue("id"), input.Name, input.LocalPort, input.Target)
+		rule, err := service.Update(request.PathValue("id"), input.Name, input.LocalPort, input.Target, input.Protocol, input.Direction)
 		if err != nil {
 			writeServiceError(w, err)
 			return
@@ -180,6 +175,10 @@ func decodeRuleInput(w http.ResponseWriter, request *http.Request) (ruleInput, b
 }
 
 func writeServiceError(w http.ResponseWriter, err error) {
+	if errors.Is(err, rules.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 	if errors.Is(err, rules.ErrNotFound) {
 		writeError(w, http.StatusNotFound, err)
 		return

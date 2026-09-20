@@ -75,7 +75,7 @@ func TestPrepareDoesNotAcceptUntilCommit(t *testing.T) {
 			t.Fatalf("listen(%q, %q)", network, address)
 		}
 		return listener, nil
-	})
+	}, net.ListenPacket, nil)
 	change, err := manager.Prepare([]config.Rule{testRule("one", 30001, "host:22")})
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)
@@ -99,7 +99,7 @@ func TestAbortClosesPreparedListeners(t *testing.T) {
 	listener := newFakeListener()
 	manager := NewManager(stubDialer{}, func(string, string) (net.Listener, error) {
 		return listener, nil
-	})
+	}, net.ListenPacket, nil)
 	change, err := manager.Prepare([]config.Rule{testRule("one", 30001, "host:22")})
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)
@@ -128,7 +128,7 @@ func TestPrepareFailureClosesAllStagedListenersAndPreservesRules(t *testing.T) {
 		default:
 			return nil, errors.New("port unavailable")
 		}
-	})
+	}, net.ListenPacket, nil)
 	first, err := manager.Prepare([]config.Rule{testRule("one", 30001, "host:22")})
 	if err != nil {
 		t.Fatalf("initial Prepare() error = %v", err)
@@ -165,7 +165,7 @@ func TestCommitReusesPortsAndClosesRemovedListeners(t *testing.T) {
 			return firstListener, nil
 		}
 		return secondListener, nil
-	})
+	}, net.ListenPacket, nil)
 	change, err := manager.Prepare([]config.Rule{testRule("one", 30001, "host:22")})
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)
@@ -198,7 +198,7 @@ func TestDialIsBoundedPerConnection(t *testing.T) {
 	listener := newFakeListener()
 	manager := NewManager(blockingDialer{}, func(string, string) (net.Listener, error) {
 		return listener, nil
-	})
+	}, net.ListenPacket, nil)
 	manager.dialTimeout = 20 * time.Millisecond
 	change, err := manager.Prepare([]config.Rule{testRule("one", 30001, "host:22")})
 	if err != nil {

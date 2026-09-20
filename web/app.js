@@ -1,4 +1,4 @@
-import { deviceHost, splitTarget, joinTarget, groupRules, nextLocalPort, createRulesRefresher } from "./devices.js";
+import { deviceHost, splitTarget, joinTarget, groupRules, nextLocalPort, createRulesRefresher, protocolForRule, protocolLabel, createRulePayload, directionForRule } from "./devices.js";
 
 const $ = (selector) => document.querySelector(selector);
 const statusNode = $("#status");
@@ -14,7 +14,7 @@ let devices = [];
 let devicesAvailable = false;
 let devicesLoading = false;
 let deviceError = "";
-let selectedDevice = null;
+let hostname = "hello-tsnet";
 let saving = false;
 let renderedDevices = "";
 const expandedDevices = new Map();
@@ -35,6 +35,9 @@ async function api(path, options = {}) {
 async function refreshStatus() {
   try {
     const status = await api("/api/status", { cache: "no-store" });
+    hostname = status.hostname || "hello-tsnet";
+    $("#shared-hostname").textContent = hostname;
+    renderDevices();
     statusNode.className = `status ${status.state}`;
     statusNode.textContent = status.state === "ready" ? "已连接" : status.state === "error" ? "连接错误" : "等待授权";
     authCard.hidden = !(status.state === "pending" && status.authUrl);
@@ -63,13 +66,15 @@ function ruleRow(rule) {
   const row = document.createElement("tr");
   const name = document.createElement("td");
   name.textContent = rule.name;
+  const protocol = document.createElement("td");
+  protocol.append(element("span", "protocol-badge", protocolLabel(rule)));
   const local = document.createElement("td");
   const localCode = document.createElement("code");
   localCode.textContent = `127.0.0.1:${rule.localPort}`;
   local.append(localCode);
   const target = document.createElement("td");
   const targetCode = document.createElement("code");
-  targetCode.textContent = rule.target;
+  targetCode.textContent = directionForRule(rule) === "inbound" ? joinTarget(hostname, rule.localPort) : rule.target;
   target.append(targetCode);
   const actions = document.createElement("td");
   actions.className = "row-actions";
@@ -92,22 +97,31 @@ function ruleRow(rule) {
     }
   };
   actions.append(edit, remove);
-  row.append(name, local, target, actions);
+  row.append(name, protocol, local, target, actions);
   return row;
 }
 
-function openForm(rule, device = null) {
-  selectedDevice = device;
-  const target = rule ? splitTarget(rule.target) : { host: device ? deviceHost(device) : "", port: "" };
-  $("#form-title").textContent = rule ? "编辑映射" : "新增映射";
+function openForm(rule, device = null, direction = "outbound") {
+  direction = rule ? directionForRule(rule) : direction;
+  const shared = direction === "inbound";
+  const target = rule && !shared ? splitTarget(rule.target) : { host: device ? deviceHost(device) : "", port: "" };
+  $("#form-title").textContent = shared ? (rule ? "编辑共享服务" : "共享本机服务") : (rule ? "编辑映射" : "新增映射");
   $("#rule-id").value = rule?.id || "";
+  $("#direction").value = direction;
   $("#name").value = rule?.name || device?.name || "";
-  $("#port").value = rule?.localPort || nextLocalPort(rules);
+  $("#port").value = rule?.localPort || (shared ? "" : nextLocalPort(rules));
+  $("#port").min = shared ? "1" : "1024";
+  $("#port").placeholder = shared ? "8080" : "30001";
+  $("#protocol").value = protocolForRule(rule);
+  $("#target-fields").hidden = shared;
+  $("#target-host-field").hidden = shared || !!device;
+  $("#target-host").disabled = shared || !!device;
+  $("#target-port").disabled = shared;
+  $("#local-port-hint").hidden = !shared;
   $("#target-host").value = target.host;
   $("#target-port").value = target.port;
-  $("#service").value = ["22", "5900", "3389"].includes(target.port) ? target.port : "";
   $("#selected-device").hidden = !device;
-  $("#selected-device").textContent = device ? `为 ${device.name} 添加 TCP 转发` : "";
+  $("#selected-device").textContent = device ? `为 ${device.name} 添加转发` : "";
   $("#form-error").textContent = "";
   dialog.showModal();
 }
@@ -116,11 +130,14 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (saving) return;
   const id = $("#rule-id").value;
-  const payload = JSON.stringify({
+  const payload = JSON.stringify(createRulePayload({
     name: $("#name").value,
-    localPort: Number($("#port").value),
-    target: joinTarget($("#target-host").value, $("#target-port").value),
-  });
+    localPort: $("#port").value,
+    host: $("#target-host").value,
+    port: $("#target-port").value,
+    protocol: $("#protocol").value,
+    direction: $("#direction").value,
+  }));
   saving = true;
   const saveButton = form.querySelector('[type="submit"]');
   saveButton.disabled = true;
@@ -136,20 +153,9 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-$("#new-rule").onclick = () => openForm(null);
+$("#new-rule").onclick = () => openForm(null, null, "inbound");
 $("#cancel").onclick = () => dialog.close();
 $("#close-dialog").onclick = () => dialog.close();
-
-$("#service").onchange = () => {
-  const port = $("#service").value;
-  if (!port) return;
-  $("#target-port").value = port;
-  if (!$("#rule-id").value) {
-    const serviceName = { "22": "SSH", "5900": "屏幕共享", "3389": "远程桌面" }[port];
-    $("#name").value = selectedDevice ? `${selectedDevice.name} · ${serviceName}` : serviceName;
-  }
-};
-$("#target-port").oninput = () => { $("#service").value = ""; };
 
 async function refreshDevices() {
   if (devicesLoading) return;
@@ -205,13 +211,13 @@ function deviceCard(device, attachedRules) {
     const details = element("details", "device-mappings");
     details.open = expandedDevices.get(device.id) ?? true;
     details.ontoggle = () => expandedDevices.set(device.id, details.open);
-    details.append(element("summary", "", `${attachedRules.length} 条 TCP 映射`));
+    details.append(element("summary", "", `${attachedRules.length} 条映射`));
     const wrapper = element("div", "table-wrap");
     const deviceTable = element("table");
     deviceTable.setAttribute("aria-label", `${device.name} 的映射`);
     const head = element("thead");
     const header = element("tr");
-    for (const label of ["名称", "本机地址", "目标", "操作"]) header.append(element("th", "", label));
+    for (const label of ["名称", "协议", "本机地址", "目标", "操作"]) header.append(element("th", "", label));
     head.append(header);
     const body = element("tbody");
     body.append(...attachedRules.map(ruleRow));
@@ -225,7 +231,7 @@ function deviceCard(device, attachedRules) {
 
 function renderDevices() {
   const query = $("#device-search").value.trim().toLowerCase();
-  const signature = JSON.stringify([devices, rules, devicesAvailable, deviceError, query]);
+  const signature = JSON.stringify([devices, rules, devicesAvailable, deviceError, query, hostname]);
   if (signature === renderedDevices) return;
   renderedDevices = signature;
   const grouped = groupRules(devices, rules);
@@ -236,9 +242,11 @@ function renderDevices() {
   notice.textContent = deviceError || (devicesAvailable ? (devices.length === 0 ? "当前没有可见设备。" : visible.length === 0 ? "没有匹配的设备。" : "") : "正在读取设备…");
   notice.hidden = !notice.textContent;
   notice.classList.toggle("warning", !devicesAvailable && !!deviceError);
-  tableBody.replaceChildren(...grouped.unmatched.map(ruleRow));
-  table.hidden = grouped.unmatched.length === 0;
-  empty.hidden = grouped.unmatched.length !== 0;
+  $("#unmatched-rules").replaceChildren(...grouped.unmatched.map(ruleRow));
+  $("#unmatched-section").hidden = grouped.unmatched.length === 0;
+  tableBody.replaceChildren(...grouped.shared.map(ruleRow));
+  table.hidden = grouped.shared.length === 0;
+  empty.hidden = grouped.shared.length !== 0;
 }
 
 $("#device-search").oninput = renderDevices;

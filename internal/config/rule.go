@@ -15,14 +15,71 @@ const (
 	maxNameBytes = 80
 )
 
+type Protocol string
+
+type Direction string
+
+const (
+	DirectionOutbound Direction = "outbound"
+	DirectionInbound Direction = "inbound"
+)
+
+const (
+	ProtocolTCP Protocol = "tcp"
+	ProtocolUDP Protocol = "udp"
+	ProtocolBoth Protocol = "both"
+)
+
 type Rule struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	LocalPort int    `json:"localPort"`
 	Target    string `json:"target"`
+	Protocol  Protocol `json:"protocol"`
+	Direction Direction `json:"direction"`
 }
 
-func NewRule(name string, localPort int, target string) (Rule, error) {
+func (r Rule) EffectiveDirection() Direction {
+	if r.Direction == "" {
+		return DirectionOutbound
+	}
+	return r.Direction
+}
+
+func (r Rule) TargetAddress() string {
+	if r.EffectiveDirection() == DirectionInbound {
+		return net.JoinHostPort("127.0.0.1", strconv.Itoa(r.LocalPort))
+	}
+	return r.Target
+}
+
+func (r Rule) EffectiveProtocol() Protocol {
+	if r.Protocol == "" {
+		return ProtocolTCP
+	}
+	return r.Protocol
+}
+
+func (r Rule) Networks() []string {
+	switch r.EffectiveProtocol() {
+	case ProtocolTCP:
+		return []string{"tcp"}
+	case ProtocolUDP:
+		return []string{"udp"}
+	case ProtocolBoth:
+		return []string{"tcp", "udp"}
+	default:
+		return nil
+	}
+}
+
+func NewRule(name string, localPort int, target string, protocol Protocol, direction Direction) (Rule, error) {
+	if direction == "" {
+		direction = DirectionOutbound
+	}
+	if protocol == "" {
+		protocol = ProtocolBoth
+	}
 	idBytes := make([]byte, 16)
 	if _, err := rand.Read(idBytes); err != nil {
 		return Rule{}, fmt.Errorf("generate rule id: %w", err)
@@ -32,6 +89,8 @@ func NewRule(name string, localPort int, target string) (Rule, error) {
 		Name:      strings.TrimSpace(name),
 		LocalPort: localPort,
 		Target:    strings.TrimSpace(target),
+		Protocol:  protocol,
+		Direction: direction,
 	}
 	if err := ValidateRule(rule); err != nil {
 		return Rule{}, err
@@ -40,6 +99,16 @@ func NewRule(name string, localPort int, target string) (Rule, error) {
 }
 
 func ValidateRule(rule Rule) error {
+	switch rule.Direction {
+	case "", DirectionOutbound, DirectionInbound:
+	default:
+		return fmt.Errorf("direction must be outbound or inbound")
+	}
+	switch rule.Protocol {
+	case "", ProtocolTCP, ProtocolUDP, ProtocolBoth:
+	default:
+		return fmt.Errorf("protocol must be tcp, udp, or both")
+	}
 	if strings.TrimSpace(rule.ID) == "" {
 		return fmt.Errorf("rule id is required")
 	}
@@ -50,10 +119,20 @@ func ValidateRule(rule Rule) error {
 	if len(name) > maxNameBytes {
 		return fmt.Errorf("rule name must be at most %d bytes", maxNameBytes)
 	}
-	if rule.LocalPort < minLocalPort || rule.LocalPort > maxPort {
-		return fmt.Errorf("local port must be between %d and %d", minLocalPort, maxPort)
+	minimum := minLocalPort
+	if rule.EffectiveDirection() == DirectionInbound {
+		minimum = 1
+	}
+	if rule.LocalPort < minimum || rule.LocalPort > maxPort {
+		return fmt.Errorf("local port must be between %d and %d", minimum, maxPort)
 	}
 	target := strings.TrimSpace(rule.Target)
+	if rule.EffectiveDirection() == DirectionInbound {
+		if target != "" {
+			return fmt.Errorf("inbound rules must not specify a target")
+		}
+		return nil
+	}
 	if strings.Contains(target, "://") {
 		return fmt.Errorf("target host must not include a URL scheme")
 	}

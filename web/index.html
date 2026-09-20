@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>hello-tsnet</title>
+    <title>Hello TSNet</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
       <header>
         <div>
           <p class="eyebrow">LOCAL TAILNET GATEWAY</p>
-          <h1>hello-tsnet</h1>
+          <h1>Hello TSNet</h1>
           <p class="lede">把本机端口轻量、安全地连接到 Tailscale 网络。</p>
         </div>
         <div id="status" class="status pending">正在启动</div>
@@ -29,7 +29,7 @@
         <div class="section-title">
           <div>
             <h2 id="devices-title">我的设备 <span id="device-count" class="count"></span></h2>
-            <p>选择设备，直接配置 TCP 转发。</p>
+            <p>选择设备，配置 TCP、UDP 或两者同时转发。</p>
           </div>
           <button id="refresh-devices" class="secondary" type="button">刷新设备</button>
         </div>
@@ -37,21 +37,31 @@
         <p id="devices-notice" class="notice" role="status">正在读取设备…</p>
         <div id="devices" class="devices"></div>
         <p class="hint">仅显示当前节点可见的设备。在线状态不代表目标端口可连接。</p>
+        <section id="unmatched-section" class="unmatched-section" hidden>
+          <h3>未关联设备的转发</h3>
+          <p class="hint">保留已有转发，可继续编辑或删除。</p>
+          <div class="table-wrap">
+            <table aria-label="未关联设备的转发">
+              <thead><tr><th>名称</th><th>协议</th><th>本机地址</th><th>Tailnet 目标</th><th>操作</th></tr></thead>
+              <tbody id="unmatched-rules"></tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
       <section class="card">
         <div class="section-title">
           <div>
-            <h2>其他映射</h2>
-            <p>手动配置，或尚未关联到可见设备的映射。所有本机端口仅监听 127.0.0.1。</p>
+            <h2>共享本机服务</h2>
+            <p>其他设备访问 <span id="shared-hostname">hello-tsnet</span>:端口，即可连接本机同端口的服务。</p>
           </div>
-          <button id="new-rule" class="secondary" type="button">手动添加</button>
+          <button id="new-rule" class="secondary" type="button">添加服务</button>
         </div>
-        <div id="empty" class="empty">没有其他映射。</div>
+        <div id="empty" class="empty">尚未共享本机服务。</div>
         <div class="table-wrap">
           <table id="rules-table" hidden>
             <thead>
-              <tr><th>名称</th><th>本机地址</th><th>Tailnet 目标</th><th></th></tr>
+              <tr><th>名称</th><th>协议</th><th>本机服务</th><th>Tailscale 访问地址</th><th>操作</th></tr>
             </thead>
             <tbody id="rules"></tbody>
           </table>
@@ -66,12 +76,17 @@
             <button id="close-dialog" type="button" class="icon" aria-label="关闭">×</button>
           </div>
           <input id="rule-id" type="hidden" />
+          <input id="direction" type="hidden" />
           <p id="selected-device" class="selected-device" hidden></p>
-          <label>服务<select id="service"><option value="">自定义 TCP</option value="22">SSH · 22</option><option value="5900">屏幕共享 / VNC · 5900</option><option value="3389">远程桌面 / RDP · 3389</option></select></label>
           <label>名称<input id="name" maxlength="80" required placeholder="Screen Sharing" /></label>
           <label>本机端口<input id="port" type="number" min="1024" max="65535" required placeholder="30001" /></label>
-          <label>目标设备或地址<input id="target-host" required placeholder="设备 DNS 名称或 Tailscale IP" /></label>
-          <label>目标端口<input id="target-port" type="number" min="1" max="65535" required placeholder="5900" /></label>
+          <p id="local-port-hint" class="port-hint" hidden>常用端口：HTTP 80 / 8080 · HTTPS 443 · SSH 22 · DNS 53 · 屏幕共享 5900 · RDP 3389</p>
+          <label>转发协议<select id="protocol" required><option value="both">TCP + UDP</option><option value="tcp">仅 TCP</option><option value="udp">仅 UDP</option></select></label>
+          <div id="target-fields">
+            <label id="target-host-field">目标设备或地址<input id="target-host" required placeholder="设备 DNS 名称或 Tailscale IP" /></label>
+            <label>目标端口<input id="target-port" type="number" min="1" max="65535" required placeholder="5900" /></label>
+            <p class="port-hint">常用端口：HTTP 80 / 8080 · HTTPS 443 · SSH 22 · DNS 53 · 屏幕共享 5900 · RDP 3389</p>
+          </div>
           <p id="form-error" class="error" role="alert"></p>
           <div class="actions">
             <button class="secondary" value="cancel" type="button" id="cancel">取消</button>

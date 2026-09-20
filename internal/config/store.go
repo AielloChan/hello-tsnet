@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-const fileVersion = 1
+const fileVersion = 3
 
 type Store struct {
 	path string
@@ -43,8 +43,26 @@ func (s *Store) Load() ([]Rule, error) {
 	if err := ensureJSONEOF(decoder); err != nil {
 		return nil, err
 	}
-	if data.Version != fileVersion {
+	if data.Version < 1 || data.Version > fileVersion {
 		return nil, fmt.Errorf("unsupported rules version %d", data.Version)
+	}
+	for i := range data.Rules {
+		if data.Version < 3 {
+			if data.Rules[i].Direction != "" {
+				return nil, fmt.Errorf("version %d rule %d must not specify a direction", data.Version, i+1)
+			}
+			data.Rules[i].Direction = DirectionOutbound
+		} else if data.Rules[i].Direction == "" {
+			return nil, fmt.Errorf("version 3 rule %d requires a direction", i+1)
+		}
+		if data.Version == 1 {
+			if data.Rules[i].Protocol != "" {
+				return nil, fmt.Errorf("version 1 rule %d must not specify a protocol", i+1)
+			}
+			data.Rules[i].Protocol = ProtocolTCP
+		} else if data.Rules[i].Protocol == "" {
+			return nil, fmt.Errorf("version %d rule %d requires a protocol", data.Version, i+1)
+		}
 	}
 	if err := ValidateRules(data.Rules); err != nil {
 		return nil, fmt.Errorf("validate rules: %w", err)
@@ -72,6 +90,10 @@ func (s *Store) Save(rules []Rule) error {
 		return fmt.Errorf("set temporary rules permissions: %w", err)
 	}
 	data := fileData{Version: fileVersion, Rules: append([]Rule(nil), rules...)}
+	for i := range data.Rules {
+		data.Rules[i].Protocol = data.Rules[i].EffectiveProtocol()
+		data.Rules[i].Direction = data.Rules[i].EffectiveDirection()
+	}
 	if data.Rules == nil {
 		data.Rules = []Rule{}
 	}

@@ -12,6 +12,24 @@ export function joinTarget(host, port) {
   return `${host.includes(":") ? `[${host}]` : host}:${port}`;
 }
 
+export function protocolForRule(rule) {
+  return rule?.protocol ?? (rule ? "tcp" : "both");
+}
+
+export function protocolLabel(rule) {
+  return { tcp: "TCP", udp: "UDP", both: "TCP + UDP" }[protocolForRule(rule)] || "未知协议";
+}
+
+export function directionForRule(rule) {
+  return rule?.direction ?? "outbound";
+}
+
+export function createRulePayload({ name, localPort, host, port, protocol, direction = "outbound" }) {
+  const payload = { name, localPort: Number(localPort), protocol, direction };
+  if (direction === "outbound") payload.target = joinTarget(host, port);
+  return payload;
+}
+
 function normalizedHost(host) {
   host = host.toLowerCase().replace(/\.$/, "");
   if (host.includes(":")) {
@@ -33,12 +51,17 @@ export function groupRules(devices, rules) {
     }
   }
   const unmatched = [];
+  const shared = [];
   for (const rule of rules) {
+    if (directionForRule(rule) === "inbound") {
+      shared.push(rule);
+      continue;
+    }
     const owners = aliases.get(normalizedHost(splitTarget(rule.target).host));
     if (owners?.size === 1) byDevice.get([...owners][0]).push(rule);
     else unmatched.push(rule);
   }
-  return { byDevice, unmatched };
+  return { byDevice, unmatched, shared };
 }
 
 export function nextLocalPort(rules) {

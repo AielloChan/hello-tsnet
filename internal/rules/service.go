@@ -9,6 +9,7 @@ import (
 )
 
 var ErrNotFound = errors.New("rule not found")
+var ErrInvalid = errors.New("invalid rule")
 
 type Store interface {
 	Save([]config.Rule) error
@@ -55,12 +56,12 @@ func (s *Service) List() []config.Rule {
 	return append([]config.Rule(nil), s.rules...)
 }
 
-func (s *Service) Add(name string, localPort int, target string) (config.Rule, error) {
+func (s *Service) Add(name string, localPort int, target string, protocol config.Protocol, direction config.Direction) (config.Rule, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rule, err := config.NewRule(name, localPort, target)
+	rule, err := config.NewRule(name, localPort, target, protocol, direction)
 	if err != nil {
-		return config.Rule{}, err
+		return config.Rule{}, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	next := append(append([]config.Rule(nil), s.rules...), rule)
 	if err := s.replaceLocked(next); err != nil {
@@ -69,7 +70,7 @@ func (s *Service) Add(name string, localPort int, target string) (config.Rule, e
 	return rule, nil
 }
 
-func (s *Service) Update(id, name string, localPort int, target string) (config.Rule, error) {
+func (s *Service) Update(id, name string, localPort int, target string, protocol config.Protocol, direction config.Direction) (config.Rule, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	index := -1
@@ -82,9 +83,15 @@ func (s *Service) Update(id, name string, localPort int, target string) (config.
 	if index < 0 {
 		return config.Rule{}, ErrNotFound
 	}
-	normalized, err := config.NewRule(name, localPort, target)
+	if protocol == "" {
+		protocol = s.rules[index].EffectiveProtocol()
+	}
+	if direction == "" {
+		direction = s.rules[index].EffectiveDirection()
+	}
+	normalized, err := config.NewRule(name, localPort, target, protocol, direction)
 	if err != nil {
-		return config.Rule{}, err
+		return config.Rule{}, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	normalized.ID = id
 	next := append([]config.Rule(nil), s.rules...)

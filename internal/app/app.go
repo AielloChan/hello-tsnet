@@ -64,6 +64,13 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	if err := a.Restorer.Restore(rules); err != nil {
 		_ = listener.Close()
+		// Restoring a shared listener may have already started tsnet.
+		timeout := a.ShutdownTimeout
+		if timeout <= 0 { timeout = defaultShutdownTimeout }
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		a.Manager.Close(cleanupCtx)
+		_ = a.Runtime.Close()
 		return fmt.Errorf("restore rules: %w", err)
 	}
 

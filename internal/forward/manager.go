@@ -18,13 +18,22 @@ type Dialer interface {
 }
 
 type ListenFunc func(network, address string) (net.Listener, error)
+type ListenPacketFunc func(network, address string) (net.PacketConn, error)
+
+type socketKey struct {
+	direction config.Direction
+	network string
+	port int
+}
 
 type Manager struct {
 	dialer Dialer
 	listen ListenFunc
+	listenPacket ListenPacketFunc
+	shareListen ListenFunc
 
 	mu      sync.Mutex
-	active  map[int]*binding
+	active  map[socketKey]*binding
 	pending bool
 	closed  bool
 	state   atomic.Pointer[managerState]
@@ -33,6 +42,9 @@ type Manager struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	dialTimeout time.Duration
+	udpIdleTimeout time.Duration
+	udpSessionLimit int
+	shareConnectionLimit int
 
 	connMu sync.Mutex
 	conns  map[net.Conn]struct{}
@@ -40,35 +52,45 @@ type Manager struct {
 
 type managerState struct {
 	rules   []config.Rule
-	targets map[int]string
+	targets map[socketKey]string
 }
 
 type binding struct {
+	key socketKey
+	ctx context.Context
+	cancel context.CancelFunc
+	slots chan struct{}
 	port     int
 	listener net.Listener
+	udp      *udpRelay
 }
 
 type ChangeSet struct {
 	manager *Manager
 	desired *managerState
-	staged  map[int]*binding
+	staged  map[socketKey]*binding
 
 	mu   sync.Mutex
 	done bool
 }
 
-func NewManager(dialer Dialer, listen ListenFunc) *Manager {
+func NewManager(dialer Dialer, listen ListenFunc, listenPacket ListenPacketFunc, shareListen ListenFunc) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &Manager{
 		dialer: dialer,
 		listen: listen,
-		active: make(map[int]*binding),
+		listenPacket: listenPacket,
+		shareListen: shareListen,
+		active: make(map[socketKey]*binding),
 		ctx:    ctx,
 		cancel: cancel,
 		conns:  make(map[net.Conn]struct{}),
 		dialTimeout: 30 * time.Second,
+		udpIdleTimeout: 60 * time.Second,
+		udpSessionLimit: 128,
+		shareConnectionLimit: 128,
 	}
-	m.state.Store(&managerState{rules: []config.Rule{}, targets: map[int]string{}})
+	m.state.Store(&managerState{rules: []config.Rule{}, targets: map[socketKey]string{}})
 	return m
 }
 
@@ -89,24 +111,42 @@ func (m *Manager) Prepare(rules []config.Rule) (*ChangeSet, error) {
 
 	desired := &managerState{
 		rules:   append([]config.Rule(nil), rules...),
-		targets: make(map[int]string, len(rules)),
+		targets: make(map[socketKey]string, len(rules)),
 	}
-	staged := make(map[int]*binding)
+	staged := make(map[socketKey]*binding)
 	for _, rule := range rules {
-		desired.targets[rule.LocalPort] = rule.Target
-		if _, exists := m.active[rule.LocalPort]; exists {
-			continue
-		}
-		address := net.JoinHostPort("127.0.0.1", strconv.Itoa(rule.LocalPort))
-		listener, err := m.listen("tcp", address)
-		if err != nil {
-			for _, item := range staged {
-				_ = item.listener.Close()
+		for _, network := range rule.Networks() {
+			key := socketKey{direction: rule.EffectiveDirection(), network: network, port: rule.LocalPort}
+			desired.targets[key] = rule.TargetAddress()
+			if _, exists := m.active[key]; exists { continue }
+			address := net.JoinHostPort("127.0.0.1", strconv.Itoa(rule.LocalPort))
+			item := &binding{port: rule.LocalPort, key: key}
+			var err error
+			if key.direction == config.DirectionInbound {
+				address = ":" + strconv.Itoa(rule.LocalPort)
+				if m.shareListen == nil {
+					err = errors.New("tailnet listener is unavailable")
+				} else {
+					item.listener, err = m.shareListen(network, address)
+				}
+				if err == nil {
+					item.ctx, item.cancel = context.WithCancel(m.ctx)
+					item.slots = make(chan struct{}, m.shareConnectionLimit)
+				}
+			} else if network == "tcp" {
+				item.listener, err = m.listen(network, address)
+			} else {
+				var packet net.PacketConn
+				packet, err = m.listenPacket(network, address)
+				if err == nil { item.udp = newUDPRelay(m, key, packet) }
 			}
-			m.pending = false
-			return nil, fmt.Errorf("listen on %s: %w", address, err)
+			if err != nil {
+				for _, prepared := range staged { prepared.close() }
+				m.pending = false
+				return nil, fmt.Errorf("listen on %s %s: %w", network, address, err)
+			}
+			staged[key] = item
 		}
-		staged[rule.LocalPort] = &binding{port: rule.LocalPort, listener: listener}
 	}
 
 	return &ChangeSet{manager: m, desired: desired, staged: staged}, nil
@@ -127,7 +167,7 @@ func (c *ChangeSet) Abort() {
 	c.mu.Unlock()
 
 	for _, item := range c.staged {
-		_ = item.listener.Close()
+		item.close()
 	}
 	c.manager.mu.Lock()
 	c.manager.pending = false
@@ -145,6 +185,13 @@ func (c *ChangeSet) Commit() {
 
 	m := c.manager
 	m.mu.Lock()
+	if m.closed {
+		for _, item := range c.staged { item.close() }
+		m.pending = false
+		m.mu.Unlock()
+		return
+	}
+	previous := m.state.Load()
 	m.state.Store(c.desired)
 	toStart := make([]*binding, 0, len(c.staged))
 	for port, item := range c.staged {
@@ -153,22 +200,29 @@ func (c *ChangeSet) Commit() {
 	}
 	toClose := make([]*binding, 0)
 	for port, item := range m.active {
-		if _, keep := c.desired.targets[port]; keep {
+		if target, keep := c.desired.targets[port]; keep {
+			if item.udp != nil && previous.targets[port] != target { item.udp.resetSessions() }
 			continue
 		}
 		delete(m.active, port)
 		toClose = append(toClose, item)
 	}
 	m.pending = false
+	// Register loops before Close can begin waiting on the group.
+	m.wg.Add(len(toStart))
 	m.mu.Unlock()
 
 	for _, item := range toStart {
-		m.wg.Add(1)
-		go m.acceptLoop(item)
+		if item.key.direction == config.DirectionInbound { go m.shareLoop(item) } else if item.udp != nil { go item.udp.run() } else { go m.acceptLoop(item) }
 	}
 	for _, item := range toClose {
-		_ = item.listener.Close()
+		item.close()
 	}
+}
+
+func (b *binding) close() {
+	if b.cancel != nil { b.cancel() }
+	if b.udp != nil { b.udp.close() } else { _ = b.listener.Close() }
 }
 
 func (m *Manager) acceptLoop(item *binding) {
@@ -193,7 +247,7 @@ func (m *Manager) handleConn(port int, local net.Conn) {
 		_ = local.Close()
 	}()
 
-	target, ok := m.state.Load().targets[port]
+	target, ok := m.state.Load().targets[socketKey{direction: config.DirectionOutbound, network: "tcp", port: port}]
 	if !ok {
 		return
 	}
@@ -229,9 +283,9 @@ func (m *Manager) Close(ctx context.Context) {
 		m.closed = true
 		m.cancel()
 		for _, item := range m.active {
-			_ = item.listener.Close()
+			item.close()
 		}
-		m.active = make(map[int]*binding)
+		m.active = make(map[socketKey]*binding)
 	}
 	m.mu.Unlock()
 

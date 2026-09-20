@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -46,9 +47,8 @@ func ParseOptions(args []string, userConfigDir string) (Options, error) {
 	if set.NArg() != 0 {
 		return Options{}, fmt.Errorf("unexpected arguments: %s", strings.Join(set.Args(), " "))
 	}
-	host, port, err := net.SplitHostPort(defaults.WebAddress)
-	if err != nil || host != "127.0.0.1" || port == "" {
-		return Options{}, fmt.Errorf("listen address must be 127.0.0.1:<port>")
+	if _, err := parseWebPort(defaults.WebAddress); err != nil {
+		return Options{}, err
 	}
 	if strings.TrimSpace(defaults.DataDir) == "" {
 		return Options{}, fmt.Errorf("data directory is required")
@@ -89,4 +89,17 @@ func PreparePaths(base string) (Paths, error) {
 		return Paths{}, fmt.Errorf("inspect rules file: %w", err)
 	}
 	return paths, nil
+}
+
+// A fixed port is required so shared services can never expose the management API.
+func parseWebPort(address string) (int, error) {
+	host, portText, err := net.SplitHostPort(address)
+	if err != nil || host != "127.0.0.1" {
+		return 0, fmt.Errorf("listen address must be 127.0.0.1:<port>")
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("management port must be between 1 and 65535")
+	}
+	return port, nil
 }

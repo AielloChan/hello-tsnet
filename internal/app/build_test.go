@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"hello-tsnet/internal/tailnet"
+	"hello-tsnet/internal/config"
 	"hello-tsnet/internal/web"
 )
 
@@ -48,5 +49,13 @@ func TestWebStatusMapsTailnetStates(t *testing.T) {
 		if got := webStatus(tt.input); got != tt.want {
 			t.Fatalf("webStatus(%#v) = %#v, want %#v", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestSharingCannotExposeManagementPort(t *testing.T) {
+	for _, port := range []int{6060, 6061} {
+		preparer := managerPreparer{managementPort: port}
+		_, err := preparer.Prepare([]config.Rule{{ID:"admin", Name:"admin", LocalPort:port, Protocol:config.ProtocolBoth, Direction:config.DirectionInbound}})
+		if err == nil { t.Fatal("management port sharing accepted") }
 	}
 }

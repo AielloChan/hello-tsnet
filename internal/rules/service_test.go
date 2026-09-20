@@ -89,7 +89,7 @@ func TestAddPrepareFailureDoesNotSave(t *testing.T) {
 	preparer := &fakePreparer{err: errors.New("port busy")}
 	service := NewService(store, preparer)
 
-	_, err := service.Add("ssh", 30001, "host:22")
+	_, err := service.Add("ssh", 30001, "host:22", config.ProtocolTCP, config.DirectionOutbound)
 	if err == nil {
 		t.Fatal("Add() error = nil")
 	}
@@ -106,7 +106,7 @@ func TestAddSaveFailureAbortsPreparedChange(t *testing.T) {
 	preparer := &fakePreparer{}
 	service := NewService(store, preparer)
 
-	_, err := service.Add("ssh", 30001, "host:22")
+	_, err := service.Add("ssh", 30001, "host:22", config.ProtocolTCP, config.DirectionOutbound)
 	if err == nil {
 		t.Fatal("Add() error = nil")
 	}
@@ -124,7 +124,7 @@ func TestAddOrdersPrepareSaveCommit(t *testing.T) {
 	preparer := &fakePreparer{events: &events}
 	service := NewService(store, preparer)
 
-	added, err := service.Add("ssh", 30001, "host:22")
+	added, err := service.Add("ssh", 30001, "host:22", config.ProtocolTCP, config.DirectionOutbound)
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -153,7 +153,7 @@ func TestConcurrentAddsAreSerializedWithoutLostUpdates(t *testing.T) {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			_, err := service.Add(input.name, input.port, "host:22")
+			_, err := service.Add(input.name, input.port, "host:22", config.ProtocolTCP, config.DirectionOutbound)
 			errs <- err
 		}()
 	}
@@ -210,12 +210,12 @@ func TestUpdatePreservesIDAndReplacesFields(t *testing.T) {
 	store := &fakeStore{}
 	preparer := &fakePreparer{}
 	service := NewService(store, preparer)
-	added, err := service.Add("old", 30001, "host:22")
+	added, err := service.Add("old", 30001, "host:22", config.ProtocolTCP, config.DirectionOutbound)
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
 
-	updated, err := service.Update(added.ID, "new", 30002, "other:5900")
+	updated, err := service.Update(added.ID, "new", 30002, "other:5900", config.ProtocolTCP, config.DirectionOutbound)
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
@@ -226,7 +226,7 @@ func TestUpdatePreservesIDAndReplacesFields(t *testing.T) {
 
 func TestDeleteRemovesRuleAndMissingIDReturnsNotFound(t *testing.T) {
 	service := NewService(&fakeStore{}, &fakePreparer{})
-	added, err := service.Add("one", 30001, "host:22")
+	added, err := service.Add("one", 30001, "host:22", config.ProtocolTCP, config.DirectionOutbound)
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}

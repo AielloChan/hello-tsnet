@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,21 +27,23 @@ func (s *fakeRuleService) List() []config.Rule {
 	return append([]config.Rule(nil), s.items...)
 }
 
-func (s *fakeRuleService) Add(name string, port int, target string) (config.Rule, error) {
+func (s *fakeRuleService) Add(name string, port int, target string, protocol config.Protocol, direction config.Direction) (config.Rule, error) {
 	if s.addErr != nil {
 		return config.Rule{}, s.addErr
 	}
-	rule := config.Rule{ID: "new-id", Name: name, LocalPort: port, Target: target}
+	rule, err := config.NewRule(name, port, target, protocol, direction)
+	if err != nil { return config.Rule{}, fmt.Errorf("%w: %v", rules.ErrInvalid, err) }
+	rule.ID = "new-id"
 	s.items = append(s.items, rule)
 	return rule, nil
 }
 
-func (s *fakeRuleService) Update(id, name string, port int, target string) (config.Rule, error) {
+func (s *fakeRuleService) Update(id, name string, port int, target string, protocol config.Protocol, direction config.Direction) (config.Rule, error) {
 	if s.updateErr != nil {
 		return config.Rule{}, s.updateErr
 	}
 	s.lastUpdated = id
-	return config.Rule{ID: id, Name: name, LocalPort: port, Target: target}, nil
+	return config.Rule{ID: id, Name: name, LocalPort: port, Target: target, Protocol: protocol, Direction: direction}, nil
 }
 
 func (s *fakeRuleService) Delete(id string) error {
@@ -183,7 +186,7 @@ func TestStatusIsNoStoreAndHidesAuthURLWhenReady(t *testing.T) {
 func TestEmbeddedIndexIsServed(t *testing.T) {
 	handler := NewHandler("127.0.0.1:6060", &fakeRuleService{}, func() Status { return Status{} }, nil)
 	response := request(t, handler, http.MethodGet, "/", nil, false)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "hello-tsnet") || !strings.Contains(response.Body.String(), `id="close-dialog" type="button"`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Hello TSNet") || !strings.Contains(response.Body.String(), `id="close-dialog" type="button"`) {
 		t.Fatalf("GET / = %d %s", response.Code, response.Body.String())
 	}
 }

@@ -6,7 +6,7 @@ import (
 )
 
 func TestNewRuleAcceptsTailnetTarget(t *testing.T) {
-	rule, err := NewRule("Screen Sharing", 30001, "screen-share.example.net:5900")
+	rule, err := NewRule("Screen Sharing", 30001, "screen-share.example.net:5900", ProtocolTCP, DirectionOutbound)
 	if err != nil {
 		t.Fatalf("NewRule() error = %v", err)
 	}

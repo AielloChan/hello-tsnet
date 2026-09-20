@@ -229,3 +229,22 @@ func TestRunRuntimeStartFailureKeepsWebRunningUntilCancelled(t *testing.T) {
 		t.Fatalf("Run() shutdown error = %v", err)
 	}
 }
+
+func TestRunRestoreFailureClosesImplicitlyStartedTailnet(t *testing.T) {
+	log := &eventLog{}
+	manager := &fakeManager{log: log}
+	app := &App{
+		Address:"127.0.0.1:6060",
+		Listen:func(string,string)(net.Listener,error){return &fakeListener{log:log},nil},
+		Loader:&fakeLoader{log:log},
+		Restorer:&fakeRestorer{log:log,err:errors.New("share bind failed")},
+		Runtime:&fakeRuntime{log:log,started:make(chan struct{})},
+		Manager:manager,
+	}
+	if err:=app.Run(context.Background());err==nil{t.Fatal("want error")}
+	want:=[]string{"load","restore","listener-close","manager-close","runtime-close"}
+	got:=log.snapshot()
+	if len(got)!=len(want){t.Fatalf("events = %v",got)}
+	for i:=range want{if got[i]!=want[i]{t.Fatalf("events = %v",got)}}
+	if !manager.hadLimit{t.Fatal("cleanup has no deadline")}
+}

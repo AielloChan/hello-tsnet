@@ -76,3 +76,10 @@ func TestPreparePathsCreatesAndRepairsPrivatePermissions(t *testing.T) {
 		t.Fatalf("rules mode = %o, want 600", info.Mode().Perm())
 	}
 }
+
+func TestManagementPortMustBeFixedAndValid(t *testing.T) {
+	for _, address := range []string{"127.0.0.1:0", "127.0.0.1:-1", "127.0.0.1:65536", "127.0.0.1:http"} {
+		if _,err:=ParseOptions([]string{"-listen",address},t.TempDir());err==nil {t.Errorf("accepted %s",address)}
+		if _,err:=New(Options{DataDir:t.TempDir(),WebAddress:address,Hostname:"test"});err==nil {t.Errorf("New accepted %s",address)}
+	}
+}

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -14,16 +15,20 @@ import (
 )
 
 func New(options Options) (*App, error) {
+	managementPort, err := parseWebPort(options.WebAddress)
+	if err != nil { return nil, err }
 	paths, err := PreparePaths(options.DataDir)
 	if err != nil {
 		return nil, err
 	}
 	store := config.NewStore(paths.RulesFile)
 	runtime := tailnet.New(paths.StateDir, options.Hostname)
-	manager := forward.NewManager(runtime, net.Listen)
-	service := rules.NewService(store, managerPreparer{manager: manager})
+	manager := forward.NewManager(runtime, net.Listen, net.ListenPacket, runtime.Listen)
+	service := rules.NewService(store, managerPreparer{manager: manager, managementPort: managementPort})
 	handler := web.NewHandler(options.WebAddress, service, func() web.Status {
-		return webStatus(runtime.Status())
+		status := webStatus(runtime.Status())
+		status.Hostname = options.Hostname
+		return status
 	}, runtime.Devices)
 	httpServer := &http.Server{
 		Addr:              options.WebAddress,
@@ -46,9 +51,15 @@ func New(options Options) (*App, error) {
 
 type managerPreparer struct {
 	manager *forward.Manager
+	managementPort int
 }
 
 func (p managerPreparer) Prepare(items []config.Rule) (rules.Change, error) {
+	for _, item := range items {
+		if item.EffectiveDirection() == config.DirectionInbound && item.LocalPort == p.managementPort {
+			return nil, fmt.Errorf("不能共享控制面板端口 %d", p.managementPort)
+		}
+	}
 	return p.manager.Prepare(items)
 }
 

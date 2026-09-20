@@ -33,6 +33,7 @@ type backend interface {
 	Start() error
 	WaitReady(context.Context) error
 	Dial(context.Context, string, string) (net.Conn, error)
+	Listen(string, string) (net.Listener, error)
 	Close() error
 }
 
@@ -72,7 +73,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 		return errors.New("tailnet runtime already started")
 	}
 	r.started = true
-	r.status = Status{State: StatePending}
+	r.status.State = StatePending
 	r.mu.Unlock()
 
 	if err := r.backend.Start(); err != nil {
@@ -148,4 +149,14 @@ func (b *tsnetBackend) Dial(ctx context.Context, network, address string) (net.C
 
 func (b *tsnetBackend) Close() error {
 	return b.server.Close()
+}
+
+// Listen registers a node-local TCP or UDP listener without waiting for login.
+// tsnet exposes incoming UDP flows as accepted datagram-preserving connections.
+func (r *Runtime) Listen(network, address string) (net.Listener, error) {
+	return r.backend.Listen(network, address)
+}
+
+func (b *tsnetBackend) Listen(network, address string) (net.Listener, error) {
+	return b.server.Listen(network, address)
 }
