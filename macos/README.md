@@ -20,7 +20,9 @@ SIGINT、SIGTERM 和 macOS 正常终止请求也走关闭流程。数据目录�
 
 ## 图标
 
-`AppIcon.png` 是内置 imagegen 生成的项目资源，提示词为：粉色圆角方形底、白色 Tailscale 风格 3×3 点阵、Hello Kitty 粉白配色、透明外边缘、无文字和装饰。构建时用系统 `sips` 和 `iconutil` 转换为多尺寸 `.icns` 及菜单栏 PNG。
+`AppIcon.png` 是内置 imagegen 生成的项目资源，提示词为：粉色圆角方形底、白色 Tailscale 风格 3×3 点阵、Hello Kitty 粉白配色、透明外边缘、无文字和装饰。构建时用系统 `sips` 和 `iconutil` 转换为多尺寸 `.icns`。
+
+菜单栏单独使用 SF Symbols 的 `circle.grid.3x3.fill`，设置 `NSImage.template = YES`，让 AppKit 按菜单栏明暗背景和选中状态渲染黑白图标，不再从粉色应用图标缩放生成菜单栏 PNG。关于窗口使用系统文字色；控制面板通过 `prefers-color-scheme` 自动适配明暗模式。
 
 这是独立项目图标，不表示 Tailscale 或 Sanrio 官方应用。
 

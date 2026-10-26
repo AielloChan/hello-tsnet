@@ -84,3 +84,17 @@ export function createRulesRefresher(load, apply, onError) {
     }
   };
 }
+
+
+export function panelForHash(hash) {
+  return hash === "#services" ? "services" : "devices";
+}
+
+export function filterDevices(devices, query, state, available) {
+  const search = query.trim().toLowerCase();
+  return devices.filter((device) => {
+    const currentState = available ? device.state : "unknown";
+    return (state === "all" || currentState === state) &&
+      [device.name, device.dnsName, device.os, ...(device.addresses || [])].join(" ").toLowerCase().includes(search);
+  });
+}

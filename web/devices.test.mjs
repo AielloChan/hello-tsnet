@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deviceHost, splitTarget, joinTarget, groupRules, nextLocalPort, createRulesRefresher, protocolForRule, protocolLabel, createRulePayload, directionForRule } from "./devices.js";
+import { deviceHost, splitTarget, joinTarget, groupRules, nextLocalPort, createRulesRefresher, protocolForRule, protocolLabel, createRulePayload, directionForRule, panelForHash, filterDevices } from "./devices.js";
 
 const mac = { id: "mac", name: "Mac mini", dnsName: "mac-mini.example.ts.net", addresses: ["100.64.0.1", "fd7a:115c:a1e0::1"] };
 
@@ -92,4 +92,19 @@ test("an old failed rule request cannot hide a newer success", async () => {
   await newer;
   pending[0].reject(new Error("old network error"));
   await older;
+});
+
+
+test("console navigation resolves known sections and falls back to devices", () => {
+  assert.equal(panelForHash("#services"), "services");
+  for (const hash of ["", "#devices", "#unknown"]) assert.equal(panelForHash(hash), "devices");
+});
+
+test("device filters combine search with status without guessing stale status", () => {
+  const items = [{ ...mac, state: "online", os: "macOS" }, { id: "nas", name: "NAS", state: "offline", addresses: ["100.64.0.2"], os: "linux" }];
+  assert.deepEqual(filterDevices(items, "MAC", "online", true), [items[0]]);
+  assert.deepEqual(filterDevices(items, "100.64.0.2", "all", true), [items[1]]);
+  assert.deepEqual(filterDevices(items, "", "online", false), []);
+  assert.deepEqual(filterDevices(items, "", "offline", false), []);
+  assert.deepEqual(filterDevices(items, "", "unknown", false), items);
 });

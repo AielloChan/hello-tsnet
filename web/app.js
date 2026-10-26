@@ -1,4 +1,4 @@
-import { deviceHost, splitTarget, joinTarget, groupRules, nextLocalPort, createRulesRefresher, protocolForRule, protocolLabel, createRulePayload, directionForRule } from "./devices.js";
+import { deviceHost, splitTarget, joinTarget, groupRules, nextLocalPort, createRulesRefresher, protocolForRule, protocolLabel, createRulePayload, directionForRule, panelForHash, filterDevices } from "./devices.js";
 
 const $ = (selector) => document.querySelector(selector);
 const statusNode = $("#status");
@@ -105,6 +105,7 @@ function openForm(rule, device = null, direction = "outbound") {
   direction = rule ? directionForRule(rule) : direction;
   const shared = direction === "inbound";
   const target = rule && !shared ? splitTarget(rule.target) : { host: device ? deviceHost(device) : "", port: "" };
+  $("#form-description").textContent = shared ? "将本机服务共享到 Tailscale 网络，使用相同端口访问。" : "通过本机端口连接这台设备上的服务。";
   $("#form-title").textContent = shared ? (rule ? "编辑共享服务" : "共享本机服务") : (rule ? "编辑映射" : "新增映射");
   $("#rule-id").value = rule?.id || "";
   $("#direction").value = direction;
@@ -154,6 +155,7 @@ form.addEventListener("submit", async (event) => {
 });
 
 $("#new-rule").onclick = () => openForm(null, null, "inbound");
+$("#empty-add-service").onclick = $("#new-rule").onclick;
 $("#cancel").onclick = () => dialog.close();
 $("#close-dialog").onclick = () => dialog.close();
 
@@ -185,27 +187,26 @@ function element(tag, className, text) {
 function deviceCard(device, attachedRules) {
   const card = element("article", "device");
   const heading = element("div", "device-heading");
-  const identity = element("div", "device-identity");
-  const avatar = element("span", "device-avatar", device.os === "macOS" ? "Mac" : device.os === "windows" ? "Win" : device.os === "linux" ? "Lin" : "TS");
-  avatar.setAttribute("aria-hidden", "true");
   const info = element("div", "device-info");
-  const name = element("div", "device-name");
+  info.append(element("h3", "device-name", device.name));
+  if (device.dnsName) info.append(element("p", "device-dns", device.dnsName));
+  const addresses = element("div", "device-addresses");
+  for (const address of device.addresses || []) addresses.append(element("code", "", address));
+  if (!device.addresses?.length) addresses.append(element("span", "muted", "暂无地址"));
+  const system = element("div", "device-system", device.os || "未知系统");
+  const connection = element("div", "device-connection");
   const state = devicesAvailable ? device.state : "unknown";
   const states = { online: "在线", offline: "离线", expired: "授权已过期", unknown: "状态未知" };
-  name.append(element("h3", "", device.name), element("span", `device-state ${state}`, states[state] || states.unknown));
-  const address = device.addresses?.join(" · ") || "暂无地址";
-  info.append(name, element("p", "device-meta", `${device.os || "未知系统"} · ${address}`));
-  if (device.dnsName) info.append(element("p", "device-dns", device.dnsName));
+  connection.append(element("span", `device-state ${state}`, states[state] || states.unknown));
   if (devicesAvailable && device.lastSeen) {
-    info.append(element("p", "device-dns", `最后在线：${new Date(device.lastSeen).toLocaleString("zh-CN")}`));
+    connection.append(element("p", "device-last-seen", `上次在线 ${new Date(device.lastSeen).toLocaleString("zh-CN")}`));
   }
-  identity.append(avatar, info);
   const add = element("button", "secondary", "添加转发");
   add.type = "button";
   add.disabled = !deviceHost(device);
   add.setAttribute("aria-label", `为 ${device.name} 添加转发`);
   add.onclick = () => openForm(null, device);
-  heading.append(identity, add);
+  heading.append(info, addresses, system, connection, add);
   card.append(heading);
   if (attachedRules.length > 0) {
     const details = element("details", "device-mappings");
@@ -231,13 +232,15 @@ function deviceCard(device, attachedRules) {
 
 function renderDevices() {
   const query = $("#device-search").value.trim().toLowerCase();
-  const signature = JSON.stringify([devices, rules, devicesAvailable, deviceError, query, hostname]);
+  const state = $("#device-state").value;
+  const signature = JSON.stringify([devices, rules, devicesAvailable, deviceError, query, state, hostname]);
   if (signature === renderedDevices) return;
   renderedDevices = signature;
   const grouped = groupRules(devices, rules);
-  const visible = devices.filter((device) => [device.name, device.dnsName, device.os, ...(device.addresses || [])].join(" ").toLowerCase().includes(query));
+  const visible = filterDevices(devices, query, state, devicesAvailable);
   $("#devices").replaceChildren(...visible.map((device) => deviceCard(device, grouped.byDevice.get(device.id))));
-  $("#device-count").textContent = devicesAvailable ? `${devices.length} 台 · ${devices.filter((device) => device.state === "online").length} 在线` : "";
+  $("#device-count").textContent = devicesAvailable ? `${visible.length} 台` : "";
+  $("#service-count").textContent = `${grouped.shared.length} 项`;
   const notice = $("#devices-notice");
   notice.textContent = deviceError || (devicesAvailable ? (devices.length === 0 ? "当前没有可见设备。" : visible.length === 0 ? "没有匹配的设备。" : "") : "正在读取设备…");
   notice.hidden = !notice.textContent;
@@ -249,6 +252,19 @@ function renderDevices() {
   empty.hidden = grouped.shared.length !== 0;
 }
 
+function showPanel() {
+  const active = panelForHash(location.hash);
+  for (const panel of ["devices", "services"]) {
+    $(`#${panel}-panel`).hidden = panel !== active;
+    if (panel === active) $(`#${panel}-nav`).setAttribute("aria-current", "page");
+    else $(`#${panel}-nav`).removeAttribute("aria-current");
+  }
+  document.title = `${active === "services" ? "共享服务" : "设备"} · Hello TSNet`;
+}
+window.addEventListener("hashchange", showPanel);
+showPanel();
+
+$("#device-state").onchange = renderDevices;
 $("#device-search").oninput = renderDevices;
 $("#refresh-devices").onclick = async () => { await Promise.all([refreshDevices(), refreshRules()]); };
 
