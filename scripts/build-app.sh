@@ -28,7 +28,6 @@ for size in 16 32 128 256 512; do
     sips -z "$double" "$double" macos/AppIcon.png --out "$staging/AppIcon.iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$staging/AppIcon.iconset" -o "$resources/AppIcon.icns"
-sips -z 80 80 macos/AppIcon.png --out "$resources/MenuIcon.png" >/dev/null
 plutil -lint "$bundle/Contents/Info.plist"
 codesign --force --sign - --identifier org.hellotsnet.app "$bundle"
 codesign --verify --strict "$bundle"

@@ -23,14 +23,10 @@ static void showError(NSString *message) {
 @implementation HTAppDelegate
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     self.statusItem = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
-    NSString *iconPath = [NSBundle.mainBundle pathForResource:@"MenuIcon" ofType:@"png"];
-    NSImage *icon = iconPath ? [[NSImage alloc] initWithContentsOfFile:iconPath] : nil;
-    if (!icon) {
-        // Also keep an identifiable icon when running the executable outside its bundle.
-        icon = [NSImage imageWithSystemSymbolName:@"circle.grid.3x3.fill" accessibilityDescription:@"Hello TSNet"];
-    }
+    // Template symbols follow the menu bar's effective appearance, including selection.
+    NSImage *icon = [NSImage imageWithSystemSymbolName:@"circle.grid.3x3.fill" accessibilityDescription:@"Hello TSNet"];
     icon.size = NSMakeSize(20, 20);
-    icon.template = NO;
+    icon.template = YES;
     self.statusItem.button.image = icon;
     self.statusItem.button.toolTip = @"Hello TSNet";
     [self.statusItem.button setAccessibilityLabel:@"Hello TSNet"];

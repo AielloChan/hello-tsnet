@@ -36,8 +36,8 @@ int main(void) {
             NSLog(@"Unexpected menu: %@", titles);
             return 1;
         }
-        if (delegate.statusItem.button.image == nil || delegate.statusItem.button.image.isTemplate) {
-            NSLog(@"Missing color menu icon");
+        if (delegate.statusItem.button.image == nil || !delegate.statusItem.button.image.isTemplate) {
+            NSLog(@"Missing adaptive template menu icon");
             return 1;
         }
         SEL actions[] = {@selector(about:), @selector(controlPanel:), @selector(quit:)};
@@ -78,7 +78,7 @@ int main(void) {
             return 1;
         }
         [NSStatusBar.systemStatusBar removeStatusItem:delegate.statusItem];
-        puts("Native menu: action wiring, color icon, About open/close, control panel URL, idempotent quit passed");
+        puts("Native menu: action wiring, template icon, About open/close, control panel URL, idempotent quit passed");
     }
     return 0;
 }
