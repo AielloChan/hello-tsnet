@@ -32,7 +32,10 @@ func run() int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := desktop.Run(ctx, application, &menubar.Menu{ControlURL: "http://" + options.WebAddress}); err != nil {
+	if err := desktop.Run(ctx, application, &menubar.Menu{
+		Status: application.Status, Devices: application.Devices,
+		Login: application.Login, Logout: application.Logout,
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "运行失败：%v\n", err)
 		return 1
 	}

@@ -4,6 +4,37 @@
 
 static int quitCount = 0;
 void goMenuQuit(void) { quitCount++; }
+void goMenuRefresh(void) {}
+static BOOL routeHelperNeeded;
+static BOOL routeHelperUpgrade;
+static int installCount, uninstallCount;
+int goMenuRouteHelperNeeded(void) { return routeHelperNeeded; }
+int goMenuRouteHelperNeedsUpgrade(void) { return routeHelperUpgrade; }
+void goMenuInstallRouteHelper(void) { installCount++; }
+void goMenuUninstallRouteHelper(void) { uninstallCount++; }
+static int signedIn = 1;
+static int iconState = HTMenuIconLoading;
+int goMenuIconState(void) { return iconState; }
+static int authorizeCount, logoutCount;
+void goMenuAuthorize(void) { authorizeCount++; }
+void goMenuLogout(void) { logoutCount++; }
+int goMenuSignedIn(void) { return signedIn; }
+
+static NSPasteboard *testPasteboard;
+@interface NSPasteboard (MenuTests)
++ (NSPasteboard *)testGeneralPasteboard;
+@end
+@implementation NSPasteboard (MenuTests)
++ (NSPasteboard *)testGeneralPasteboard { return testPasteboard; }
+@end
+
+static NSModalResponse routeHelperResponse;
+@interface NSAlert (RouteHelperTests)
+- (NSModalResponse)testRouteHelperResponse;
+@end
+@implementation NSAlert (RouteHelperTests)
+- (NSModalResponse)testRouteHelperResponse { return routeHelperResponse; }
+@end
 
 static NSURL *openedURL;
 @interface NSWorkspace (MenuTests)
@@ -22,13 +53,70 @@ static BOOL containsApplicationName(NSView *view) {
     return NO;
 }
 
+static BOOL containsLink(NSView *view, NSString *target) {
+    if ([view isKindOfClass:NSTextView.class]) {
+        NSAttributedString *credits = ((NSTextView *)view).textStorage;
+        for (NSUInteger index = 0; index < credits.length; index++) {
+            if ([[[credits attribute:NSLinkAttributeName atIndex:index effectiveRange:nil] description] isEqualToString:target]) {
+                return YES;
+            }
+        }
+    }
+    for (NSView *child in view.subviews) {
+        if (containsLink(child, target)) { return YES; }
+    }
+    return NO;
+}
+
+static NSButton *findButton(NSView *view, NSString *title) {
+    if ([view isKindOfClass:NSButton.class] &&
+        [((NSButton *)view).title isEqualToString:title]) { return (NSButton *)view; }
+    for (NSView *child in view.subviews) {
+        NSButton *button = findButton(child, title);
+        if (button) { return button; }
+    }
+    return nil;
+}
+
+static CGFloat horizontalInkWidth(NSImage *image) {
+    NSBitmapImageRep *bitmap = [NSBitmapImageRep imageRepWithData:image.TIFFRepresentation];
+    NSInteger left = bitmap.pixelsWide;
+    NSInteger right = -1;
+    for (NSInteger y = 0; y < bitmap.pixelsHigh; y++) {
+        for (NSInteger x = 0; x < bitmap.pixelsWide; x++) {
+            if ([bitmap colorAtX:x y:y].alphaComponent > 0.1) {
+                left = MIN(left, x);
+                right = MAX(right, x);
+            }
+        }
+    }
+    return right < left ? 0 : (right - left + 1) * image.size.width / bitmap.pixelsWide;
+}
+
+static NSColor *dotColor(NSBitmapImageRep *bitmap, NSUInteger row, NSUInteger column) {
+    NSInteger x = (4 + column * 6) * bitmap.pixelsWide / 20;
+    NSInteger y = (4 + row * 6) * bitmap.pixelsHigh / 20;
+    return [[bitmap colorAtX:x y:y] colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+}
+
+static NSUInteger litDots(NSImage *image) {
+    NSBitmapImageRep *bitmap = [NSBitmapImageRep imageRepWithData:image.TIFFRepresentation];
+    NSUInteger mask = 0;
+    for (NSUInteger row = 0; row < 3; row++) {
+        for (NSUInteger col = 0; col < 3; col++) {
+            NSColor *color = dotColor(bitmap, row, col);
+            if (color.redComponent - color.greenComponent > 0.15) { mask |= 1u << (row * 3 + col); }
+        }
+    }
+    return mask;
+}
+
 int main(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
         [NSApp finishLaunching];
         HTAppDelegate *delegate = [HTAppDelegate new];
-        delegate.controlURL = [NSURL URLWithString:@"http://127.0.0.1:6060"];
         [delegate applicationDidFinishLaunching:[NSNotification notificationWithName:NSApplicationDidFinishLaunchingNotification object:NSApp]];
         NSMenu *menu = delegate.statusItem.menu;
         NSArray *titles = [menu.itemArray valueForKey:@"title"];
@@ -36,8 +124,36 @@ int main(void) {
             NSLog(@"Unexpected menu: %@", titles);
             return 1;
         }
-        if (delegate.statusItem.button.image == nil || !delegate.statusItem.button.image.isTemplate) {
-            NSLog(@"Missing adaptive template menu icon");
+        if (delegate.statusItem.button.image == nil || delegate.statusItem.button.image.isTemplate) {
+            NSLog(@"The menu icon must render its own pink color");
+            return 1;
+        }
+        NSImage *lightIcon = menuIcon(0, [NSAppearance appearanceNamed:NSAppearanceNameAqua]);
+        NSImage *darkIcon = menuIcon(0, [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]);
+        NSColor *lightDot = dotColor([NSBitmapImageRep imageRepWithData:lightIcon.TIFFRepresentation], 0, 0);
+        NSColor *darkDot = dotColor([NSBitmapImageRep imageRepWithData:darkIcon.TIFFRepresentation], 0, 0);
+        if (lightDot.alphaComponent < 0.9 || lightDot.redComponent > 0.15 ||
+            darkDot.alphaComponent < 0.9 || darkDot.greenComponent < 0.85) {
+            NSLog(@"Unlit dots must be black in light mode and white in dark mode");
+            return 1;
+        }
+        NSUInteger firstFrame = litDots(delegate.statusItem.button.image);
+        [delegate refreshStatusIcon];
+        NSUInteger nextFrame = litDots(delegate.statusItem.button.image);
+        if (!firstFrame || !nextFrame || firstFrame == nextFrame) {
+            NSLog(@"Loading must change which dots are lit");
+            return 1;
+        }
+        iconState = HTMenuIconReady;
+        [delegate refreshStatusIcon];
+        NSImage *ready = delegate.statusItem.button.image;
+        if (litDots(ready) != 0b000111010) {
+            NSLog(@"Ready icon must light the top-center dot and all middle dots");
+            return 1;
+        }
+        CGFloat width = horizontalInkWidth(ready);
+        if (width < 15 || width > 17) {
+            NSLog(@"The nine dots should occupy about 16 pt horizontally (got %.1f)", width);
             return 1;
         }
         SEL actions[] = {@selector(about:), @selector(controlPanel:), @selector(quit:)};
@@ -57,6 +173,10 @@ int main(void) {
             NSLog(@"About menu did not display the application name");
             return 1;
         }
+        if (!containsLink(aboutWindow.contentView, @"https://tailscale.com/docs/features/tsnet")) {
+            NSLog(@"About must link to the tsnet documentation");
+            return 1;
+        }
         [aboutWindow performClose:nil];
         if (quitCount != 0 || [delegate applicationShouldTerminateAfterLastWindowClosed:NSApp]) {
             NSLog(@"Closing About must leave the gateway running");
@@ -67,10 +187,140 @@ int main(void) {
         method_exchangeImplementations(openURL, captureURL);
         [menu performActionForItemAtIndex:1];
         method_exchangeImplementations(openURL, captureURL);
-        if (![openedURL.absoluteString isEqualToString:@"http://127.0.0.1:6060"]) {
-            NSLog(@"Control panel did not open the configured loopback URL");
+        NSWindow *panel = nil;
+        for (NSWindow *window in NSApp.windows) {
+            if (window.isVisible && [window.identifier isEqualToString:@"hello-tsnet.devices"]) { panel = window; }
+        }
+        if (!panel || openedURL != nil) {
+            NSLog(@"Control panel must open an AppKit device window without launching a browser");
             return 1;
         }
+        [delegate.panel update:@{
+            @"status": @{ @"state": @"ready", @"access": @"设备直访已启用",
+                @"localAddresses": @[@"100.64.0.1", @"fd7a:115c:a1e0::1"],
+                @"account": @{ @"name": @"Test User", @"login": @"test@example.com", @"tailnet": @"test.ts.net" } },
+            @"devices": @[
+                @{ @"name": @"Mac mini", @"dnsName": @"mac-mini.tailtest.ts.net",
+                   @"addresses": @[@"100.64.0.2", @"fd7a:115c:a1e0::2"], @"state": @"online" },
+                @{ @"name": @"NAS", @"state": @"offline", @"lastSeen": @"2026-11-05T00:11:22.123Z" }
+            ]
+        }];
+        NSTableView *table = [delegate.panel valueForKey:@"table"];
+        NSTableColumn *nameColumn = [table tableColumnWithIdentifier:@"name"];
+        if (table.numberOfRows != 2 ||
+            ![[delegate.panel tableView:table objectValueForTableColumn:nameColumn row:0] isEqualToString:@"Mac mini"]) {
+            NSLog(@"Device snapshot did not populate the native table");
+            return 1;
+        }
+        testPasteboard = [NSPasteboard pasteboardWithUniqueName];
+        Method general = class_getClassMethod(NSPasteboard.class, @selector(generalPasteboard));
+        Method isolated = class_getClassMethod(NSPasteboard.class, @selector(testGeneralPasteboard));
+        method_exchangeImplementations(general, isolated);
+        [panel setContentSize:panel.contentMinSize];
+        [panel.contentView layoutSubtreeIfNeeded];
+        NSRect lastColumn = [table rectOfColumn:table.numberOfColumns - 1];
+        if (NSMaxX(lastColumn) > NSMaxX(table.visibleRect) + 1) {
+            NSLog(@"All columns must remain visible at the minimum window width");
+            return 1;
+        }
+        for (NSString *address in @[@"100.64.0.1", @"fd7a:115c:a1e0::1", @"100.64.0.2", @"fd7a:115c:a1e0::2",
+                                      @"mac-mini.tailtest.ts.net", @"mac-mini.local"]) {
+            NSButton *button = findButton(panel.contentView, address);
+            [button performClick:nil];
+            if (!button.image || button.imagePosition != NSImageTrailing ||
+                ![[testPasteboard stringForType:NSPasteboardTypeString] isEqualToString:address]) {
+                NSLog(@"Each address must be individually copyable: %@", address);
+                return 1;
+            }
+        }
+        method_exchangeImplementations(general, isolated);
+        [testPasteboard releaseGlobally];
+        NSPopover *addressFeedback = [delegate.panel valueForKey:@"addressFeedback"];
+        if (!addressFeedback.shown) {
+            NSLog(@"Copy feedback must be visible near the address");
+            return 1;
+        }
+        NSTableColumn *numberColumn = [table tableColumnWithIdentifier:@"number"];
+        NSTableColumn *lastSeenColumn = [table tableColumnWithIdentifier:@"lastSeen"];
+        NSString *seen = [delegate.panel tableView:table objectValueForTableColumn:lastSeenColumn row:1];
+        if (!table.usesAlternatingRowBackgroundColors || !numberColumn || !lastSeenColumn ||
+            ![[delegate.panel tableView:table objectValueForTableColumn:numberColumn row:0] isEqualToString:@"1"] ||
+            ![[delegate.panel tableView:table objectValueForTableColumn:numberColumn row:1] isEqualToString:@"2"] ||
+            !seen.length || [seen isEqualToString:@"—"] || [seen containsString:@"T00:11"]) {
+            NSLog(@"The table must show row numbers, alternating colors and formatted last-seen time");
+            return 1;
+        }
+        NSTextField *loginLabel = [delegate.panel valueForKey:@"accountLogin"];
+        if (![loginLabel.stringValue isEqualToString:@"test@example.com"] || !findButton(panel.contentView, @"退出登录")) {
+            NSLog(@"Settings must show the current account and logout action");
+            return 1;
+        }
+        NSButton *uninstall = findButton(panel.contentView, @"卸载路由助手");
+        if (!uninstall.enabled || [menu itemWithTitle:@"安装路由助手…"]) {
+            NSLog(@"An installed helper must be removable from Settings");
+            return 1;
+        }
+        routeHelperUpgrade = YES;
+        [menu.delegate menuNeedsUpdate:menu];
+        NSButton *upgrade = findButton(panel.contentView, @"更新路由助手");
+        if (!upgrade || upgrade.hidden || !upgrade.enabled) {
+            NSLog(@"Settings must offer an update for an older helper");
+            return 1;
+        }
+        routeHelperUpgrade = NO;
+        [menu.delegate menuNeedsUpdate:menu];
+        Method runModal = class_getInstanceMethod(NSAlert.class, @selector(runModal));
+        Method stubModal = class_getInstanceMethod(NSAlert.class, @selector(testRouteHelperResponse));
+        method_exchangeImplementations(runModal, stubModal);
+        routeHelperResponse = NSAlertSecondButtonReturn;
+        [uninstall sendAction:uninstall.action to:uninstall.target];
+        BOOL uninstallCancelled = uninstall.enabled && uninstallCount == 0;
+        routeHelperResponse = NSAlertFirstButtonReturn;
+        [uninstall sendAction:uninstall.action to:uninstall.target];
+        method_exchangeImplementations(runModal, stubModal);
+        if (!uninstallCancelled || uninstallCount != 1 || uninstall.enabled) {
+            NSLog(@"Removing the helper must require consent and disable controls until completion");
+            return 1;
+        }
+        routeHelperNeeded = YES;
+        [delegate routeHelperFinished:@"" removing:YES];
+        if (![menu itemWithTitle:@"安装路由助手…"] || !findButton(panel.contentView, @"安装路由助手").enabled) {
+            NSLog(@"Successful removal must restore installation in the menu and Settings");
+            return 1;
+        }
+        routeHelperNeeded = NO;
+        [menu.delegate menuNeedsUpdate:menu];
+        if (quitCount != 0) { return 1; }
+        signedIn = 0;
+        [menu.delegate menuNeedsUpdate:menu];
+        [menu performActionForItemAtIndex:1];
+        if ([menu itemWithTitle:@"控制面板"] || ![menu itemWithTitle:@"授权登录"] || panel.isVisible || authorizeCount != 1) {
+            NSLog(@"Signed-out menu must replace the dashboard with authorization");
+            return 1;
+        }
+        signedIn = 1;
+        [menu.delegate menuNeedsUpdate:menu];
+        routeHelperNeeded = YES;
+        HTAppDelegate *setupDelegate = [HTAppDelegate new];
+        [setupDelegate applicationDidFinishLaunching:[NSNotification notificationWithName:NSApplicationDidFinishLaunchingNotification object:NSApp]];
+        NSMenuItem *install = [setupDelegate.statusItem.menu itemWithTitle:@"安装路由助手…"];
+        if (!install || installCount != 0) {
+            NSLog(@"A missing route helper must offer installation without running it before consent");
+            return 1;
+        }
+        method_exchangeImplementations(runModal, stubModal);
+        routeHelperResponse = NSAlertSecondButtonReturn;
+        [setupDelegate installRouteHelper:nil];
+        BOOL cancelled = install.enabled && installCount == 0;
+        routeHelperResponse = NSAlertFirstButtonReturn;
+        [setupDelegate installRouteHelper:nil];
+        [setupDelegate installRouteHelper:nil];
+        method_exchangeImplementations(runModal, stubModal);
+        if (!cancelled || installCount != 1 || install.enabled) {
+            NSLog(@"Installation must require consent and run only once at a time");
+            return 1;
+        }
+        [NSStatusBar.systemStatusBar removeStatusItem:setupDelegate.statusItem];
         [menu performActionForItemAtIndex:2];
         [delegate quit:nil];
         if (quitCount != 1 || menu.itemArray.lastObject.enabled) {
@@ -78,7 +328,7 @@ int main(void) {
             return 1;
         }
         [NSStatusBar.systemStatusBar removeStatusItem:delegate.statusItem];
-        puts("Native menu: action wiring, template icon, About open/close, control panel URL, idempotent quit passed");
+        puts("Native menu: action wiring, animated and ready icons, About open/close, native device panel, idempotent quit passed");
     }
     return 0;
 }

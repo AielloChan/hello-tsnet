@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"strings"
 	"sync"
 	"testing"
@@ -15,14 +14,17 @@ import (
 
 type fakeBackend struct {
 	networkStatus *ipnstate.Status
-	statusErr error
-	statusCalls int
-	startErr error
-	readyErr error
-	ready    chan struct{}
-	started  chan struct{}
-	closed   bool
-	mu       sync.Mutex
+	statusErr     error
+	statusCalls   int
+	startErr      error
+	readyErr      error
+	logoutErr     error
+	logoutRetries int
+	loginCalls    int
+	ready         chan struct{}
+	started       chan struct{}
+	closed        bool
+	mu            sync.Mutex
 }
 
 func (b *fakeBackend) NetworkStatus(context.Context) (*ipnstate.Status, error) {
@@ -50,10 +52,6 @@ func (b *fakeBackend) WaitReady(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-}
-
-func (b *fakeBackend) Dial(context.Context, string, string) (net.Conn, error) {
-	return nil, errors.New("dial called")
 }
 
 func (b *fakeBackend) Close() error {
@@ -153,21 +151,4 @@ func waitForState(t *testing.T, runtime *Runtime, want State) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatalf("state = %q, want %q", runtime.Status().State, want)
-}
-
-func (b *fakeBackend) Listen(network, address string) (net.Listener, error) {
-	return nil, errors.New(network + " " + address)
-}
-
-func TestListenDelegatesWithoutWaitingForReady(t *testing.T) {
-	runtime := newRuntime(newFakeBackend())
-	if _,err := runtime.Listen("udp", ":8000"); err == nil || err.Error() != "udp :8000" { t.Fatalf("Listen = %v",err) }
-}
-
-func TestStartPreservesLoginURLCapturedWhileRestoringShares(t *testing.T) {
-	runtime := newRuntime(newFakeBackend())
-	runtime.userLogf("https://login.tailscale.com/a/example-token")
-	ctx,cancel:=context.WithCancel(context.Background()); defer cancel()
-	if err:=runtime.Start(ctx);err!=nil{t.Fatal(err)}
-	if runtime.Status().AuthURL==""{t.Fatal("Start discarded login URL")}
 }

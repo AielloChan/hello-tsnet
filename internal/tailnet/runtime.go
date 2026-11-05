@@ -4,12 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"net/url"
 	"regexp"
 	"strings"
 	"sync"
 
+	"hello-tsnet/internal/direct"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tsnet"
 )
@@ -17,36 +16,47 @@ import (
 type State string
 
 const (
-	StatePending State = "pending"
-	StateReady   State = "ready"
-	StateError   State = "error"
+	StatePending   State = "pending"
+	StateReady     State = "ready"
+	StateError     State = "error"
+	StateSignedOut State = "signedOut"
 )
 
 type Status struct {
-	State   State  `json:"state"`
-	AuthURL string `json:"authUrl,omitempty"`
-	Error   string `json:"error,omitempty"`
+	State          State    `json:"state"`
+	AuthURL        string   `json:"authUrl,omitempty"`
+	Error          string   `json:"error,omitempty"`
+	Access         string   `json:"access,omitempty"`
+	RoutesReady    bool     `json:"-"`
+	Account        *Account `json:"account,omitempty"`
+	LocalAddresses []string `json:"localAddresses,omitempty"`
 }
 
 type backend interface {
 	NetworkStatus(context.Context) (*ipnstate.Status, error)
 	Start() error
 	WaitReady(context.Context) error
-	Dial(context.Context, string, string) (net.Conn, error)
-	Listen(string, string) (net.Listener, error)
+	Login(context.Context) (string, error)
+	Logout(context.Context, bool) error
 	Close() error
 }
 
 type Runtime struct {
 	backend backend
 
-	mu      sync.RWMutex
-	status  Status
-	started bool
+	mu          sync.RWMutex
+	status      Status
+	started     bool
+	available   bool
+	accountMu   sync.Mutex
+	logoutRetry bool
+	cancel      context.CancelFunc
+	done        chan struct{}
 }
 
 type tsnetBackend struct {
 	server *tsnet.Server
+	device *direct.Device
 }
 
 var loginURLPattern = regexp.MustCompile(`https://login\.tailscale\.com/[^\s]+`)
@@ -74,13 +84,20 @@ func (r *Runtime) Start(ctx context.Context) error {
 	}
 	r.started = true
 	r.status.State = StatePending
+	ctx, r.cancel = context.WithCancel(ctx)
+	r.done = make(chan struct{})
 	r.mu.Unlock()
 
 	if err := r.backend.Start(); err != nil {
 		r.setError(err)
+		close(r.done)
 		return err
 	}
+	r.mu.Lock()
+	r.available = true
+	r.mu.Unlock()
 	go func() {
+		defer close(r.done)
 		err := r.backend.WaitReady(ctx)
 		if ctx.Err() != nil {
 			return
@@ -92,6 +109,16 @@ func (r *Runtime) Start(ctx context.Context) error {
 		r.mu.Lock()
 		r.status = Status{State: StateReady}
 		r.mu.Unlock()
+		if b, ok := r.backend.(*tsnetBackend); ok {
+			b.runRoutes(ctx, r.applyNetworkStatus, func(access string, ready bool) {
+				r.mu.Lock()
+				if r.status.State == StateReady {
+					r.status.Access = access
+					r.status.RoutesReady = ready
+				}
+				r.mu.Unlock()
+			})
+		}
 	}()
 	return nil
 }
@@ -102,11 +129,14 @@ func (r *Runtime) Status() Status {
 	return r.status
 }
 
-func (r *Runtime) Dial(ctx context.Context, network, address string) (net.Conn, error) {
-	return r.backend.Dial(ctx, network, address)
-}
-
 func (r *Runtime) Close() error {
+	r.mu.RLock()
+	cancel, done := r.cancel, r.done
+	r.mu.RUnlock()
+	if cancel != nil {
+		cancel()
+		<-done
+	}
 	return r.backend.Close()
 }
 
@@ -117,13 +147,13 @@ func (r *Runtime) userLogf(format string, args ...any) {
 		return
 	}
 	match = strings.TrimRight(match, ".,);]}")
-	parsed, err := url.Parse(match)
-	if err != nil || parsed.Scheme != "https" || parsed.Hostname() != "login.tailscale.com" {
+	link := officialLoginURL(match)
+	if link == "" {
 		return
 	}
 	r.mu.Lock()
 	if r.status.State == StatePending {
-		r.status.AuthURL = parsed.String()
+		r.status.AuthURL = link
 	}
 	r.mu.Unlock()
 }
@@ -135,6 +165,12 @@ func (r *Runtime) setError(err error) {
 }
 
 func (b *tsnetBackend) Start() error {
+	device, err := direct.NewDevice()
+	if err != nil {
+		return err
+	}
+	b.device = device
+	b.server.Tun = device
 	return b.server.Start()
 }
 
@@ -143,20 +179,9 @@ func (b *tsnetBackend) WaitReady(ctx context.Context) error {
 	return err
 }
 
-func (b *tsnetBackend) Dial(ctx context.Context, network, address string) (net.Conn, error) {
-	return b.server.Dial(ctx, network, address)
-}
-
 func (b *tsnetBackend) Close() error {
+	if b.device != nil {
+		_ = b.device.Close()
+	}
 	return b.server.Close()
-}
-
-// Listen registers a node-local TCP or UDP listener without waiting for login.
-// tsnet exposes incoming UDP flows as accepted datagram-preserving connections.
-func (r *Runtime) Listen(network, address string) (net.Listener, error) {
-	return r.backend.Listen(network, address)
-}
-
-func (b *tsnetBackend) Listen(network, address string) (net.Listener, error) {
-	return b.server.Listen(network, address)
 }

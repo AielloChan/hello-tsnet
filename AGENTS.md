@@ -2,34 +2,20 @@
 
 ## 项目目标
 
-`hello-tsnet` 是一个仅运行在当前用户空间的 macOS TCP/UDP 转发网关。它通过官方 `tailscale.com/tsnet` 嵌入 Tailscale，不安装系统扩展、网络接口或后台守护进程。
+Hello TSNet 是 macOS 菜单栏应用。它用官方 `tailscale.com/tsnet` 加入 Tailnet，同步可见设备的主机路由，并把 Tailnet 允许的入站 TCP/UDP 连接转发至本机同号端口。管理窗口使用 AppKit 和进程内接口。
 
-继续开发、运行维护、发布或排查前，先阅读 [`docs/HANDOFF.md`](docs/HANDOFF.md)。该文档是当前运行状态、关键设计决策、验证证据、回滚方式和后续工作的入口。
+继续开发、运行维护、发布或排查前，先阅读 [研发交接](docs/HANDOFF.md)。
 
 ## 工程约束
 
-- 使用 Go 标准库和官方 `tailscale.com/tsnet`，除非确有必要，不增加第三方依赖。
-- 管理界面只能监听 loopback；不得暴露到局域网或 tailnet，共享规则必须拒绝管理界面的端口。
-- 访问远端规则绑定 loopback；共享本机服务规则绑定 tsnet 节点，同端口转到 127.0.0.1，必须显式选择共享方向。
-- Tailscale 状态和转发规则必须存放在用户数据目录，权限不得宽于 `0700`/`0600`。
+- 主应用以普通用户权限运行。管理员助手经 Unix socket 验证对端 UID，只配置自己创建的 utun、Tailnet 设备的精确主机路由和受管 hosts 区块。
+- 保持系统默认路由、DNS 和防火墙配置。退出时释放助手创建的网卡及路由。
+- 管理界面保留在原生进程内。入站转发遵守 Tailnet 访问策略，目标固定为 `127.0.0.1` 同号端口。
+- 优先复用 Go 标准库、官方 tsnet 和项目已使用的依赖。会话、消息和关闭等待需要有界。
+- Tailscale 状态存放在用户数据目录，权限不得宽于 `0700`/`0600`。旧规则文件仅供回退。
 - 不记录或回显 auth key、cookie、节点私钥及其他凭据。
-- 支持 TCP、UDP 或两者；新规则默认两者，旧规则保持 TCP。不要提前加入 HTTP 反向代理、多用户或远程管理。
-- 规则变更必须通过协调器原子生效；失败时保留此前仍可工作的规则。
 - 修改行为时先写失败测试，确认失败原因正确后再写实现。
 - 禁止主动格式化无关代码，保持最小范围修改。
-
-## 分层
-
-- `cmd/hello-tsnet`: 参数解析、信号转交和退出码，不承载业务装配。
-- `internal/config`: 规则模型、校验和 JSON 持久化。
-- `internal/forward`: loopback/tsnet 监听器、双向 TCP 转发与有界 UDP 会话。
-- `internal/rules`: 串行规则写入，以及 Prepare → Save → Commit 编排。
-- `internal/tailnet`: tsnet 生命周期、授权状态、拨号和节点监听适配。
-- `internal/web`: loopback 管理 API 与嵌入式页面。
-- `internal/app`: 唯一的依赖装配、启动顺序和有界关闭实现。
-- `web`: 无构建步骤的静态资源。
-
-规则写操作必须集中在单一 service 中串行执行。协调器先准备所有可能失败的 listener，规则文件保存成功后再执行不返回错误的内存 commit；不得用“先部分生效、失败再回滚”模拟事务。
 
 ## 验证
 
@@ -41,7 +27,7 @@ go vet ./...
 go build ./cmd/hello-tsnet
 ```
 
-涉及真实 tailnet 的验证必须明确标记为手工验收，不得用单元测试结果替代。
+原生窗口运行 `./scripts/test-menubar.sh`。真实网卡和 Tailnet 的验证按手工验收记录。
 
 ## Git
 
