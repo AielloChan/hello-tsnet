@@ -29,3 +29,7 @@
 5. 退出 App，核对助手创建的路由和 utun 已清理，原生设备面板始终没有占用 TCP 或 UDP 管理端口。
 
 仓库测试验证原生菜单和窗口、设备地址快照、路由增量与重试，以及用户态数据经过本机真实 TCP/UDP 服务的同端口转发。该覆盖范围与上述手工验收分开记录。
+
+## 发布安装包
+
+手动运行 GitHub Actions 的 **Build and Release** 可以生成供预览的 Apple 芯片和 Intel DMG。正式发布时，先在 `macos/Info.plist` 更新 `CFBundleShortVersionString` 和 `CFBundleVersion`，再为该提交推送匹配的 `vX.Y.Z` 标签。两个 DMG 都通过挂载、签名和架构检查后，工作流才会把它们连同 `SHA256SUMS.txt` 发布到 GitHub Releases。

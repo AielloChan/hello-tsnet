@@ -29,6 +29,33 @@ env -u GOROOT CGO_ENABLED=1 MACOSX_DEPLOYMENT_TARGET=15.0 \
     go build -trimpath -ldflags="-s -w -X hello-tsnet/internal/routehelper.bundledHelperSHA256=${helper_digest%% *}" \
     -o "$bundle/Contents/MacOS/hello-tsnet" ./cmd/hello-tsnet-app
 
+licenses="$resources/Licenses"
+mkdir -p "$licenses/Go"
+cp LICENSE "$licenses/Hello-TSNet.txt"
+go_root=$(env -u GOROOT go env GOROOT)
+go_license="$go_root/LICENSE"
+if [[ ! -f "$go_license" ]]; then
+    # Homebrew stores the license one level above libexec.
+    go_license="$(dirname "$go_root")/LICENSE"
+fi
+cp "$go_license" "$licenses/Go/LICENSE"
+if [[ -f "$go_root/PATENTS" ]]; then
+    cp "$go_root/PATENTS" "$licenses/Go/"
+fi
+modules=$(env -u GOROOT CGO_ENABLED=1 go list -deps \
+    -f '{{with .Module}}{{if not .Main}}{{.Path}}{{"\t"}}{{.Dir}}{{end}}{{end}}' \
+    ./cmd/hello-tsnet-app ./cmd/hello-tsnet-route-helper | sort -u)
+while IFS=$'\t' read -r module_path module_dir; do
+    [[ -n "$module_path" ]] || continue
+    destination="$licenses/$module_path"
+    mkdir -p "$destination"
+    for document in LICENSE LICENSE.txt LICENSE.md COPYING NOTICE NOTICE.txt NOTICE.md PATENTS; do
+        if [[ -f "$module_dir/$document" ]]; then
+            cp "$module_dir/$document" "$destination/"
+        fi
+    done
+done <<< "$modules"
+
 for size in 16 32 128 256 512; do
     sips -z "$size" "$size" macos/AppIcon.png --out "$staging/AppIcon.iconset/icon_${size}x${size}.png" >/dev/null
     double=$((size * 2))

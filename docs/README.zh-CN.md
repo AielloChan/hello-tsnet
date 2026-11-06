@@ -11,7 +11,13 @@ Hello TSNet 通过内置的 [Tailscale tsnet](https://tailscale.com/docs/feature
 - **让 Tailnet 访问本机服务。** [Tailnet 访问策略](https://tailscale.com/docs/features/access-control/grants) 允许的 TCP 和 UDP 连接会转发到本机 `127.0.0.1` 的同号端口。
 - **管理连接。** 在原生面板中搜索设备、复制地址和名称、登录或退出，以及管理助手。
 
-## 构建和安装
+## 下载和安装
+
+从 [GitHub Releases](https://github.com/AielloChan/hello-tsnet/releases/latest) 下载 DMG。Apple 芯片选 **arm64**，Intel 芯片选 **x86_64**。打开磁盘映像，把 Hello TSNet 拖到「应用程序」。需要 macOS 15 或更新版本。
+
+发布包使用临时签名。首次打开若被 macOS 拦截，可在「隐私与安全性」中选择「仍要打开」。[Apple 操作说明](https://support.apple.com/zh-cn/102445)
+
+## 从源代码构建
 
 需要 macOS 15 或更新版本、Go 1.27.1 或更新版本、Python 3 和 Xcode Command Line Tools。克隆仓库后，在根目录运行：
 
@@ -20,7 +26,11 @@ Hello TSNet 通过内置的 [Tailscale tsnet](https://tailscale.com/docs/feature
 python3 scripts/install-app.py
 ```
 
-安装器将应用放到 `/Applications/Hello TSNet.app` 并打开。点菜单栏里的「授权登录」，在浏览器完成 Tailscale 授权。
+安装器将应用放到 `/Applications/Hello TSNet.app` 并打开。
+
+## 登录和配置直连
+
+点菜单栏里的「授权登录」，在浏览器完成 Tailscale 授权。
 
 点「安装路由助手…」并完成 macOS 管理员授权，即可通过 IP 和名称直连设备。后续可在「控制面板 → 设置」更新或卸载助手。如果装过公开版之前的助手，请先从旧版应用卸载它，再安装公开版。
 

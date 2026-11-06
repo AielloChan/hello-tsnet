@@ -11,7 +11,13 @@ Hello TSNet incorpora [Tailscale tsnet](https://tailscale.com/docs/features/tsne
 - **Comparte servicios locales con tu Tailnet.** Las conexiones TCP y UDP permitidas por la [política de acceso de tu Tailnet](https://tailscale.com/docs/features/access-control/grants) se reenvían al mismo puerto en `127.0.0.1`.
 - **Gestiona la conexión.** Busca dispositivos, copia direcciones y nombres, inicia o cierra sesión y gestiona el asistente desde el panel nativo.
 
-## Compilación e instalación
+## Descarga e instalación
+
+Descarga un DMG desde [GitHub Releases](https://github.com/AielloChan/hello-tsnet/releases/latest). Elige **arm64** para Apple Silicon o **x86_64** para Intel. Abre la imagen de disco y arrastra Hello TSNet a Aplicaciones. Se requiere macOS 15 o posterior.
+
+Las versiones publicadas usan una firma ad hoc. Si macOS bloquea el primer inicio, selecciona **Abrir igualmente** en **Privacidad y seguridad**. [Instrucciones de Apple](https://support.apple.com/es-es/102445)
+
+## Compilación desde el código fuente
 
 Necesitas macOS 15 o posterior, Go 1.27.1 o posterior, Python 3 y Xcode Command Line Tools. Clona este repositorio y ejecuta estos comandos en su directorio raíz.
 
@@ -20,7 +26,11 @@ Necesitas macOS 15 o posterior, Go 1.27.1 o posterior, Python 3 y Xcode Command 
 python3 scripts/install-app.py
 ```
 
-El instalador coloca la aplicación en `/Applications/Hello TSNet.app` y la abre. Selecciona **授权登录 (Iniciar sesión)** en la barra de menús y completa la autorización de Tailscale en el navegador.
+El instalador coloca la aplicación en `/Applications/Hello TSNet.app` y la abre.
+
+## Inicio de sesión y acceso directo
+
+Selecciona **授权登录 (Iniciar sesión)** en la barra de menús y completa la autorización de Tailscale en el navegador.
 
 Selecciona **安装路由助手… (Instalar asistente de rutas)** y aprueba la solicitud de administrador de macOS para acceder directamente por IP y por nombre. Puedes actualizar o desinstalar el asistente en **控制面板 → 设置 (Panel de control → Ajustes)**. Si instalaste un asistente anterior a la publicación del proyecto, desinstálalo desde la aplicación anterior antes de instalar la versión pública.
 

@@ -16,7 +16,13 @@ Hello TSNet embeds [Tailscale tsnet](https://tailscale.com/docs/features/tsnet) 
 - **Expose a local service to your Tailnet.** Connections allowed by your [Tailnet access policy](https://tailscale.com/docs/features/access-control/grants) can reach TCP and UDP services on the same port at `127.0.0.1`.
 - **Manage the connection.** Search devices, copy addresses and names, sign in or out, and manage the helper from the native panel.
 
-## Build and install
+## Download and install
+
+Download a DMG from [GitHub Releases](https://github.com/AielloChan/hello-tsnet/releases/latest). Choose **arm64** for Apple Silicon or **x86_64** for Intel. Open the disk image and drag Hello TSNet into Applications. The app requires macOS 15 or newer.
+
+Release builds are ad-hoc signed. If macOS blocks the first launch, use **Open Anyway** in **Privacy & Security**. [Apple’s instructions](https://support.apple.com/en-us/102445)
+
+## Build from source
 
 You need macOS 15 or newer, Go 1.27.1 or newer, Python 3, and Xcode Command Line Tools. Clone this repository and run these commands from its root.
 
@@ -25,7 +31,11 @@ You need macOS 15 or newer, Go 1.27.1 or newer, Python 3, and Xcode Command Line
 python3 scripts/install-app.py
 ```
 
-The installer places the app at `/Applications/Hello TSNet.app` and opens it. In the menu bar, choose **授权登录 (Sign in)** and complete the Tailscale authorization in your browser.
+The installer places the app at `/Applications/Hello TSNet.app` and opens it.
+
+## Sign in and set up direct access
+
+In the menu bar, choose **授权登录 (Sign in)** and complete the Tailscale authorization in your browser.
 
 Choose **安装路由助手… (Install Route Helper)** and approve the macOS administrator prompt to enable direct access by IP and name. You can update or remove the helper later under **控制面板 → 设置 (Control Panel → Settings)**. If you installed a helper from a pre-public build, uninstall it from that build before installing the public version.
 

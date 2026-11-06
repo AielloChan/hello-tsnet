@@ -1,0 +1,98 @@
+name: Build and Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-and-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Check the app version
+        id: version
+        run: |
+          version=$(plutil -extract CFBundleShortVersionString raw -o - macos/Info.plist)
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid app version: $version" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match app version $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Test and vet
+        run: |
+          go test ./...
+          go vet ./...
+      - name: Build and verify the disk image
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+          APP_ARCH: ${{ matrix.arch }}
+        run: |
+          ./scripts/build-app.sh
+          ./scripts/create-dmg.sh dist/hello-tsnet.app "dist/Hello-TSNet-$APP_VERSION-$APP_ARCH.dmg" "$APP_ARCH"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: dmg-${{ matrix.arch }}
+          path: dist/Hello-TSNet-${{ steps.version.outputs.version }}-${{ matrix.arch }}.dmg
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: dmg-*
+          path: dist
+          merge-multiple: true
+      - name: Publish the verified installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: dist
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          arm="Hello-TSNet-$version-arm64.dmg"
+          intel="Hello-TSNet-$version-x86_64.dmg"
+          sha256sum "$arm" "$intel" > SHA256SUMS.txt
+          notes="$RUNNER_TEMP/hello-tsnet-release-notes.md"
+          cat > "$notes" <<'NOTES'
+          Download the **arm64** DMG for Apple Silicon or the **x86_64** DMG for Intel. Requires macOS 15 or later.
+
+          Open the disk image and drag Hello TSNet into Applications. These builds are ad-hoc signed and have not been notarized. If macOS blocks the first launch, follow [Apple’s Open Anyway instructions](https://support.apple.com/en-us/102445) in Privacy & Security.
+
+          Verify the downloaded disk image with the SHA-256 values in `SHA256SUMS.txt`.
+          NOTES
+          gh release create "$GITHUB_REF_NAME" "$arm" "$intel" SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Hello TSNet $GITHUB_REF_NAME" --notes-file "$notes"

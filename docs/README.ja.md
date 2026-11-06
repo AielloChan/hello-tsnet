@@ -11,7 +11,13 @@ Hello TSNet は [Tailscale tsnet](https://tailscale.com/docs/features/tsnet) を
 - **ローカルサービスを Tailnet に公開。** [Tailnet のアクセスポリシー](https://tailscale.com/docs/features/access-control/grants) で許可された TCP と UDP の接続を、`127.0.0.1` の同じポートに転送します。
 - **接続を管理。** パネルでデバイスを検索し、アドレスや名前をコピーできます。サインイン、サインアウト、ヘルパーの管理も行えます。
 
-## ビルドとインストール
+## ダウンロードとインストール
+
+[GitHub Releases](https://github.com/AielloChan/hello-tsnet/releases/latest) から DMG をダウンロードします。Apple シリコンには **arm64**、Intel Mac には **x86_64** を選択してください。ディスクイメージを開き、Hello TSNet を「アプリケーション」フォルダにドラッグします。macOS 15 以降が必要です。
+
+配布版はアドホック署名を使用しています。macOS が初回起動をブロックした場合は、「プライバシーとセキュリティ」で「このまま開く」を選択してください。[Apple の手順](https://support.apple.com/ja-jp/102445)
+
+## ソースコードからビルド
 
 macOS 15 以降、Go 1.27.1 以降、Python 3、Xcode Command Line Tools が必要です。このリポジトリをクローンし、ルートディレクトリで次のコマンドを実行します。
 
@@ -20,7 +26,11 @@ macOS 15 以降、Go 1.27.1 以降、Python 3、Xcode Command Line Tools が必�
 python3 scripts/install-app.py
 ```
 
-インストーラーはアプリを `/Applications/Hello TSNet.app` に配置して起動します。メニューバーで「授权登录」（サインイン）を選び、ブラウザーで Tailscale の認証を完了してください。
+インストーラーはアプリを `/Applications/Hello TSNet.app` に配置して起動します。
+
+## サインインと直接アクセスの設定
+
+メニューバーで「授权登录」（サインイン）を選び、ブラウザーで Tailscale の認証を完了してください。
 
 「安装路由助手…」（ルーティングヘルパーをインストール）を選び、macOS の管理者認証を行うと、IP や名前で直接アクセスできます。ヘルパーの更新と削除は「控制面板 → 设置」（コントロールパネル → 設定）から行えます。一般公開前のヘルパーを使用している場合は、旧アプリから削除してから公開版をインストールしてください。
 
