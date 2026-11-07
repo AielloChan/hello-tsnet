@@ -1,6 +1,7 @@
 #import <AppKit/AppKit.h>
 #import <ServiceManagement/ServiceManagement.h>
 #import <objc/runtime.h>
+#import "../internal/menubar/avatar.h"
 #import "../internal/menubar/menu_darwin.m"
 
 static int quitCount = 0;
@@ -52,6 +53,36 @@ static HTTestLoginItem *testLoginItem;
 @end
 @implementation SMAppService (MenuTests)
 + (SMAppService *)testMainAppService { return (SMAppService *)testLoginItem; }
+@end
+
+@interface HTTestAvatarProtocol : NSURLProtocol
+@end
+@implementation HTTestAvatarProtocol
++ (BOOL)canInitWithRequest:(NSURLRequest *)request {
+    return [request.URL.host isEqualToString:@"avatars.example.invalid"];
+}
++ (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
+- (void)startLoading {
+    NSData *png = [[NSData alloc] initWithBase64EncodedString:
+        @"iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR4nGPgrzgBRwzIHACCagp5d+QGSAAAAABJRU5ErkJggg==" options:0];
+    NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:self.request.URL statusCode:200
+        HTTPVersion:@"HTTP/1.1" headerFields:@{@"Content-Type": @"image/png"}];
+    [self.client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed];
+    [self.client URLProtocol:self didLoadData:png];
+    [self.client URLProtocolDidFinishLoading:self];
+}
+- (void)stopLoading {}
+@end
+
+@interface HTAccountAvatarView (MenuTests)
++ (NSURLSessionConfiguration *)testPhotoSessionConfiguration;
+@end
+@implementation HTAccountAvatarView (MenuTests)
++ (NSURLSessionConfiguration *)testPhotoSessionConfiguration {
+    NSURLSessionConfiguration *configuration = [self testPhotoSessionConfiguration];
+    configuration.protocolClasses = @[HTTestAvatarProtocol.class];
+    return configuration;
+}
 @end
 
 static NSPasteboard *testPasteboard;
@@ -310,10 +341,54 @@ int main(void) {
         [delegate.panel performSelector:@selector(changePage:) withObject:tabs];
         if (probing) { NSLog(@"Settings must stop latency probes"); return 1; }
         NSView *settings = [delegate.panel valueForKey:@"settingsPage"];
-        if (containsLabelText(settings, @"设置") || !containsLabelText(settings, @"Tailscale 账号")) {
-            NSLog(@"Settings must start with the account card without a large page title");
+        if (containsLabelText(settings, @"设置") || containsLabelText(settings, @"Tailscale 账号") ||
+            !containsLabelText(settings, @"Test User") || !containsLabelText(settings, @"test@example.com") ||
+            !findButton(settings, @"退出登录")) {
+            NSLog(@"Settings must start with the signed-in identity and logout without a card title");
             return 1;
         }
+        HTAccountAvatarView *avatar = [delegate.panel valueForKey:@"accountAvatar"];
+        NSImage *placeholder = avatar.image;
+        [panel.contentView layoutSubtreeIfNeeded];
+        if (!placeholder || NSWidth(avatar.bounds) != 44 || NSHeight(avatar.bounds) != 44) {
+            NSLog(@"An account without a photo must show a 44 pt placeholder avatar (image %d, frame %@, alignment %@)",
+                placeholder != nil, NSStringFromRect(avatar.frame), NSStringFromRect([avatar alignmentRectForFrame:avatar.frame]));
+            return 1;
+        }
+        Method photoConfiguration = class_getClassMethod(HTAccountAvatarView.class, @selector(photoSessionConfiguration));
+        Method stubPhotoConfiguration = class_getClassMethod(HTAccountAvatarView.class, @selector(testPhotoSessionConfiguration));
+        method_exchangeImplementations(photoConfiguration, stubPhotoConfiguration);
+        NSMutableDictionary *photoStatus = [status mutableCopy];
+        NSMutableDictionary *photoAccount = [status[@"account"] mutableCopy];
+        photoStatus[@"account"] = photoAccount;
+        photoAccount[@"profilePicURL"] = @"https://avatars.example.invalid/account.png";
+        [delegate.panel update:@{@"status": photoStatus}];
+        NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:2];
+        while (avatar.image == placeholder && deadline.timeIntervalSinceNow > 0) {
+            [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode beforeDate:deadline];
+        }
+        if (!avatar.image || avatar.image == placeholder) {
+            NSLog(@"The current account photo must replace its placeholder");
+            return 1;
+        }
+        if (avatar.image.size.width != avatar.image.size.height) {
+            NSLog(@"Non-square account photos must fill the circular avatar frame");
+            return 1;
+        }
+        photoAccount[@"login"] = @"other@example.com";
+        [delegate.panel update:@{@"status": photoStatus}];
+        if (avatar.image != placeholder || ![avatar valueForKey:@"photoTask"]) {
+            NSLog(@"Changing accounts must restart loading even if the photo URL is the same");
+            return 1;
+        }
+        photoAccount[@"profilePicURL"] = @"http://avatars.example.invalid/account.png";
+        [delegate.panel update:@{@"status": photoStatus}];
+        method_exchangeImplementations(photoConfiguration, stubPhotoConfiguration);
+        if (avatar.image != placeholder || [avatar valueForKey:@"photoTask"]) {
+            NSLog(@"An insecure photo URL must clear the avatar and keep the placeholder");
+            return 1;
+        }
+        [delegate.panel update:@{@"status": status}];
         if (!containsLabelText(settings, @"菜单栏亮点颜色") || !containsLabelText(settings, @"登录时启动") ||
             !findButton(settings, @"恢复默认颜色")) {
             NSLog(@"Settings must expose menu bar color and launch at login");

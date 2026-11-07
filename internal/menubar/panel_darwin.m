@@ -1,4 +1,5 @@
 #import "panel.h"
+#import "avatar.h"
 #import "preferences.h"
 
 extern void goMenuRefresh(void);
@@ -81,6 +82,8 @@ static NSBox *card(NSView *view, NSSize padding) {
 @property(nonatomic, strong) NSPopover *addressFeedback;
 @property(nonatomic, strong) NSTextField *accountName;
 @property(nonatomic, strong) NSTextField *accountLogin;
+@property(nonatomic, strong) HTAccountAvatarView *accountAvatar;
+@property(nonatomic, copy) NSDictionary *avatarAccount;
 @property(nonatomic, strong) NSButton *logout;
 @property(nonatomic, strong) NSTextField *routeHelperStatus;
 @property(nonatomic, strong) NSButton *routeHelperButton;
@@ -210,19 +213,19 @@ static NSBox *card(NSView *view, NSSize padding) {
 }
 
 - (NSView *)makeSettingsPage {
-    NSTextField *section = label(@"Tailscale 账号", 15, NSFontWeightSemibold, NSColor.labelColor);
-    self.accountName = label(@"正在读取账号…", 15, NSFontWeightMedium, NSColor.labelColor);
+    self.accountAvatar = [[HTAccountAvatarView alloc] initWithFrame:NSZeroRect];
+    [self.accountAvatar.widthAnchor constraintEqualToConstant:44].active = YES;
+    [self.accountAvatar.heightAnchor constraintEqualToConstant:44].active = YES;
+    self.accountName = label(@"正在读取账号…", 15, NSFontWeightSemibold, NSColor.labelColor);
     self.accountLogin = label(@"", 13, NSFontWeightRegular, NSColor.secondaryLabelColor);
     self.accountLogin.selectable = YES;
     NSStackView *identity = column(@[self.accountName, self.accountLogin], 4);
     self.logout = [NSButton buttonWithTitle:@"退出登录" target:self action:@selector(confirmLogout:)];
     self.logout.hasDestructiveAction = YES;
-    NSStackView *accountRow = [NSStackView stackViewWithViews:@[identity, [NSView new], self.logout]];
+    NSStackView *accountRow = [NSStackView stackViewWithViews:@[self.accountAvatar, identity, [NSView new], self.logout]];
     accountRow.alignment = NSLayoutAttributeCenterY;
     accountRow.spacing = 12;
-    NSStackView *details = column(@[section, accountRow], 12);
-    [accountRow.widthAnchor constraintEqualToAnchor:details.widthAnchor].active = YES;
-    NSBox *accountCard = card(details, NSMakeSize(18, 16));
+    NSBox *accountCard = card(accountRow, NSMakeSize(18, 16));
     NSTextField *helperTitle = label(@"路由助手", 15, NSFontWeightSemibold, NSColor.labelColor);
     self.routeHelperStatus = label(@"正在读取安装状态…", 13, NSFontWeightRegular, NSColor.secondaryLabelColor);
     self.routeHelperButton = [NSButton buttonWithTitle:@"安装路由助手" target:self action:@selector(manageRouteHelper:)];
@@ -248,7 +251,7 @@ static NSBox *card(NSView *view, NSSize padding) {
         [accountCard.topAnchor constraintEqualToAnchor:page.topAnchor],
         [accountCard.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
         [accountCard.trailingAnchor constraintEqualToAnchor:page.trailingAnchor],
-        [accountCard.heightAnchor constraintEqualToConstant:112],
+        [accountCard.heightAnchor constraintEqualToConstant:80],
         [helperCard.topAnchor constraintEqualToAnchor:accountCard.bottomAnchor constant:12],
         [helperCard.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
         [helperCard.trailingAnchor constraintEqualToAnchor:page.trailingAnchor],
@@ -283,6 +286,7 @@ static NSBox *card(NSView *view, NSSize padding) {
     self.settingsPage.hidden = tabs.selectedSegment == 0;
     self.devicePage.hidden = !self.settingsPage.hidden;
     if (!self.settingsPage.hidden) { [self.preferencesView refreshLoginItem]; }
+    [self refreshAccountAvatar];
     [self setProbing:self.window.isKeyWindow && !self.devicePage.hidden];
 }
 
@@ -295,6 +299,7 @@ static NSBox *card(NSView *view, NSSize padding) {
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
     if (!self.settingsPage.hidden) { [self.preferencesView refreshLoginItem]; }
+    [self refreshAccountAvatar];
     [self setProbing:!self.devicePage.hidden];
 }
 
@@ -337,6 +342,7 @@ static NSBox *card(NSView *view, NSSize padding) {
 
 - (void)windowWillClose:(NSNotification *)notification {
     [self setProbing:NO];
+    [self.accountAvatar loadPhotoURL:nil];
     [self.timer invalidate];
     self.timer = nil;
     [self.feedbackTimer invalidate];
@@ -350,6 +356,12 @@ static NSBox *card(NSView *view, NSSize padding) {
 }
 
 - (void)refresh:(id)sender { goMenuRefresh(); }
+
+- (void)refreshAccountAvatar {
+    if (self.window.isVisible && !self.settingsPage.hidden) {
+        [self.accountAvatar loadPhotoURL:self.avatarAccount[@"profilePicURL"]];
+    }
+}
 
 - (void)confirmLogout:(id)sender {
     NSAlert *alert = [NSAlert new];
@@ -399,9 +411,15 @@ static NSBox *card(NSView *view, NSSize padding) {
     NSString *name = account[@"name"];
     NSString *login = account[@"login"];
     self.accountName.stringValue = name.length ? name : (login.length ? login : @"账号信息暂不可用");
-    self.accountLogin.stringValue = name.length ? login ?: @"" : @"";
+    self.accountLogin.stringValue = name.length && ![name isEqualToString:login] ? login ?: @"" : @"";
+    self.accountLogin.hidden = self.accountLogin.stringValue.length == 0;
     self.accountName.toolTip = self.accountName.stringValue;
     self.accountLogin.toolTip = self.accountLogin.stringValue;
+    if (self.avatarAccount != account && ![self.avatarAccount isEqual:account]) {
+        [self.accountAvatar loadPhotoURL:nil];
+        self.avatarAccount = account;
+    }
+    [self refreshAccountAvatar];
     self.notice.stringValue = status[@"error"] ?: snapshot[@"deviceError"] ?: status[@"access"] ?: @"";
     self.notice.hidden = self.notice.stringValue.length == 0;
     if (snapshot[@"devices"]) { self.devices = snapshot[@"devices"]; }

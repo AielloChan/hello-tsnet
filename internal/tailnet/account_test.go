@@ -24,11 +24,11 @@ func TestLogoutClearsAccountAndRequiresExplicitLogin(t *testing.T) {
 	current := &ipnstate.Status{BackendState: "Running", Self: &ipnstate.PeerStatus{UserID: 1},
 		TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.1"), netip.MustParseAddr("fd7a:115c:a1e0::1")},
 		User: map[tailcfg.UserID]tailcfg.UserProfile{
-			1: {DisplayName: "Current User", LoginName: "current@example.com"},
-			2: {DisplayName: "Other User", LoginName: "other@example.com"},
+			1: {DisplayName: "Current User", LoginName: "current@example.com", ProfilePicURL: "https://avatars.example.com/current.png"},
+			2: {DisplayName: "Other User", LoginName: "other@example.com", ProfilePicURL: "https://avatars.example.com/other.png"},
 		}}
 	runtime.applyNetworkStatus(current)
-	if got := runtime.Status().Account; got == nil || got.Login != "current@example.com" {
+	if got := runtime.Status().Account; got == nil || got.Login != "current@example.com" || got.ProfilePicURL != "https://avatars.example.com/current.png" {
 		t.Fatalf("account = %+v", got)
 	}
 	if local := runtime.Status().LocalDevice; local == nil || !local.Local || local.State != "unknown" ||

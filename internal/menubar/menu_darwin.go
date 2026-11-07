@@ -4,7 +4,7 @@ package menubar
 
 /*
 #cgo CFLAGS: -x objective-c -fobjc-arc -fblocks
-#cgo LDFLAGS: -framework AppKit -framework ServiceManagement
+#cgo LDFLAGS: -framework AppKit -framework ServiceManagement -framework ImageIO -framework CoreGraphics
 #include <stdlib.h>
 #include "menu.h"
 */

@@ -11,9 +11,10 @@ import (
 )
 
 type Account struct {
-	Name    string `json:"name,omitempty"`
-	Login   string `json:"login,omitempty"`
-	Tailnet string `json:"tailnet,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Login         string `json:"login,omitempty"`
+	Tailnet       string `json:"tailnet,omitempty"`
+	ProfilePicURL string `json:"profilePicURL,omitempty"`
 }
 
 func (r *Runtime) applyNetworkStatus(network *ipnstate.Status) {
@@ -28,7 +29,7 @@ func (r *Runtime) applyNetworkStatus(network *ipnstate.Status) {
 			return
 		}
 		profile := network.User[network.Self.UserID]
-		account := &Account{Name: profile.DisplayName, Login: profile.LoginName}
+		account := &Account{Name: profile.DisplayName, Login: profile.LoginName, ProfilePicURL: profile.ProfilePicURL}
 		if network.CurrentTailnet != nil {
 			account.Tailnet = network.CurrentTailnet.Name
 		}
