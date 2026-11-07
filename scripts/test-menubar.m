@@ -5,6 +5,13 @@
 static int quitCount = 0;
 void goMenuQuit(void) { quitCount++; }
 void goMenuRefresh(void) {}
+static unsigned long long probeSession;
+static BOOL probing;
+unsigned long long goMenuSetProbing(int active) {
+    if (active && !probing) { probeSession++; }
+    probing = active != 0;
+    return probing ? probeSession : 0;
+}
 static BOOL routeHelperNeeded;
 static BOOL routeHelperUpgrade;
 static int installCount, uninstallCount;
@@ -200,12 +207,38 @@ int main(void) {
                 @"localAddresses": @[@"100.64.0.1", @"fd7a:115c:a1e0::1"],
                 @"account": @{ @"name": @"Test User", @"login": @"test@example.com", @"tailnet": @"test.ts.net" } },
             @"devices": @[
-                @{ @"name": @"Mac mini", @"dnsName": @"mac-mini.tailtest.ts.net",
+                @{ @"id": @"mini", @"name": @"Mac mini", @"dnsName": @"mac-mini.tailtest.ts.net",
                    @"addresses": @[@"100.64.0.2", @"fd7a:115c:a1e0::2"], @"state": @"online" },
                 @{ @"name": @"NAS", @"state": @"offline", @"lastSeen": @"2026-11-05T00:11:22.123Z" }
             ]
         }];
         NSTableView *table = [delegate.panel valueForKey:@"table"];
+        // Drive delegate notifications explicitly so the harness does not depend on focus timing.
+        NSNotification *focus = [NSNotification notificationWithName:NSWindowDidBecomeKeyNotification object:panel];
+        [delegate.panel windowDidBecomeKey:focus];
+        NSTableColumn *pingColumn = [table tableColumnWithIdentifier:@"latency"];
+        if (!probing || !pingColumn) { NSLog(@"Device panel must start latency probes"); return 1; }
+        unsigned long long firstProbeSession = probeSession;
+        [delegate.panel updateLatency:@{ @"id": @"mini", @"address": @"100.64.0.2", @"milliseconds": @12.5 } session:probeSession];
+        if (![[delegate.panel tableView:table objectValueForTableColumn:pingColumn row:0] isEqualToString:@"12.5 ms"] ||
+            ![[delegate.panel tableView:table objectValueForTableColumn:pingColumn row:1] isEqualToString:@"—"]) {
+            NSLog(@"Online latency and offline placeholders must be distinct"); return 1;
+        }
+        NSSegmentedControl *tabs = [NSSegmentedControl new];
+        tabs.segmentCount = 2;
+        tabs.selectedSegment = 1;
+        [delegate.panel performSelector:@selector(changePage:) withObject:tabs];
+        if (probing) { NSLog(@"Settings must stop latency probes"); return 1; }
+        tabs.selectedSegment = 0;
+        [delegate.panel performSelector:@selector(changePage:) withObject:tabs];
+        [delegate.panel windowDidBecomeKey:focus];
+        [delegate.panel updateLatency:@{ @"id": @"mini", @"address": @"100.64.0.2", @"milliseconds": @999 } session:firstProbeSession];
+        if (!probing || [[delegate.panel tableView:table objectValueForTableColumn:pingColumn row:0] isEqualToString:@"999.0 ms"]) {
+            NSLog(@"Reopening must discard stale latency results"); return 1;
+        }
+        [delegate.panel windowDidResignKey:[NSNotification notificationWithName:NSWindowDidResignKeyNotification object:panel]];
+        if (probing) { NSLog(@"Background panel must stop latency probes"); return 1; }
+        [delegate.panel windowDidBecomeKey:focus];
         NSTableColumn *nameColumn = [table tableColumnWithIdentifier:@"name"];
         if (table.numberOfRows != 2 ||
             ![[delegate.panel tableView:table objectValueForTableColumn:nameColumn row:0] isEqualToString:@"Mac mini"]) {
@@ -223,6 +256,19 @@ int main(void) {
             NSLog(@"All columns must remain visible at the minimum window width");
             return 1;
         }
+        [panel setContentSize:NSMakeSize(1600, 550)];
+        [panel.contentView layoutSubtreeIfNeeded];
+        [table sizeToFit];
+        [table layoutSubtreeIfNeeded];
+        NSButton *wideDomain = findButton(panel.contentView, @"mac-mini.tailtest.ts.net");
+        CGFloat domainWidth = ceil(wideDomain.attributedTitle.size.width + wideDomain.image.size.width + 8);
+        if (!wideDomain || wideDomain.bounds.size.width + 1 < domainWidth) {
+            NSLog(@"Wide name column still truncates domain: button %.1f, needed %.1f, column %.1f",
+                wideDomain.bounds.size.width, domainWidth, nameColumn.width);
+            return 1;
+        }
+        [panel setContentSize:panel.contentMinSize];
+        [panel.contentView layoutSubtreeIfNeeded];
         for (NSString *address in @[@"100.64.0.1", @"fd7a:115c:a1e0::1", @"100.64.0.2", @"fd7a:115c:a1e0::2",
                                       @"mac-mini.tailtest.ts.net", @"mac-mini.local"]) {
             NSButton *button = findButton(panel.contentView, address);
@@ -294,7 +340,7 @@ int main(void) {
         signedIn = 0;
         [menu.delegate menuNeedsUpdate:menu];
         [menu performActionForItemAtIndex:1];
-        if ([menu itemWithTitle:@"控制面板"] || ![menu itemWithTitle:@"授权登录"] || panel.isVisible || authorizeCount != 1) {
+        if ([menu itemWithTitle:@"控制面板"] || ![menu itemWithTitle:@"授权登录"] || panel.isVisible || authorizeCount != 1 || probing) {
             NSLog(@"Signed-out menu must replace the dashboard with authorization");
             return 1;
         }

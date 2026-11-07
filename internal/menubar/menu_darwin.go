@@ -24,11 +24,13 @@ import (
 type Menu struct {
 	Status  func() tailnet.Status
 	Devices func(context.Context) ([]tailnet.Device, error)
+	Ping    func(context.Context, string) (time.Duration, error)
 	Login   func(context.Context) (string, error)
 	Logout  func(context.Context) error
 
 	refreshing  atomic.Bool
 	accountBusy atomic.Bool
+	latency     latencyMonitor
 }
 
 // These callbacks are installed and invoked only on the main AppKit thread.
@@ -36,6 +38,18 @@ var activeMenu *Menu
 var quitCallback func()
 
 func (m *Menu) Run(quit func()) {
+	m.latency.devices = m.Devices
+	m.latency.ping = m.Ping
+	m.latency.publish = func(session uint64, result latencyResult) {
+		data, err := json.Marshal(result)
+		if err != nil {
+			return
+		}
+		value := C.CString(string(data))
+		defer C.free(unsafe.Pointer(value))
+		C.HTMenuLatencyUpdate(value, C.ulonglong(session))
+	}
+	defer m.latency.stop()
 	activeMenu = m
 	quitCallback = quit
 	defer func() { activeMenu, quitCallback = nil, nil }()
@@ -60,9 +74,24 @@ func ShowError(err error) {
 
 //export goMenuQuit
 func goMenuQuit() {
+	if activeMenu != nil {
+		activeMenu.latency.stop()
+	}
 	if quitCallback != nil {
 		quitCallback()
 	}
+}
+
+//export goMenuSetProbing
+func goMenuSetProbing(active C.int) C.ulonglong {
+	if activeMenu == nil {
+		return 0
+	}
+	if active == 0 {
+		activeMenu.latency.stop()
+		return 0
+	}
+	return C.ulonglong(activeMenu.latency.start())
 }
 
 //export goMenuSignedIn

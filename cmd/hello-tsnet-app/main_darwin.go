@@ -34,6 +34,7 @@ func run() int {
 	defer stop()
 	if err := desktop.Run(ctx, application, &menubar.Menu{
 		Status: application.Status, Devices: application.Devices,
+		Ping: application.Ping,
 		Login: application.Login, Logout: application.Logout,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "运行失败：%v\n", err)

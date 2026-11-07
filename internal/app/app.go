@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"hello-tsnet/internal/tailnet"
 )
@@ -16,6 +17,7 @@ type App struct {
 	Runtime      Runtime
 	Status       func() tailnet.Status
 	Devices      func(context.Context) ([]tailnet.Device, error)
+	Ping         func(context.Context, string) (time.Duration, error)
 	Login        func(context.Context) (string, error)
 	Logout       func(context.Context) error
 }

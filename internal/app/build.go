@@ -17,6 +17,7 @@ func New(options Options) (*App, error) {
 		Runtime:      runtime,
 		Status:       runtime.Status,
 		Devices:      runtime.Devices,
+		Ping:         runtime.Ping,
 		Login:        runtime.Login,
 		Logout:       runtime.Logout,
 	}, nil

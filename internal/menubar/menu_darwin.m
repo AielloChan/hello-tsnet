@@ -308,6 +308,18 @@ void HTMenuUpdate(const char *json) {
     }
 }
 
+void HTMenuLatencyUpdate(const char *json, unsigned long long session) {
+    @autoreleasepool {
+        NSData *data = [[NSString stringWithUTF8String:json] dataUsingEncoding:NSUTF8StringEncoding];
+        NSDictionary *result = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if (!result) { return; }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            HTAppDelegate *delegate = (HTAppDelegate *)NSApp.delegate;
+            [delegate.panel updateLatency:result session:session];
+        });
+    }
+}
+
 void HTMenuAccountFinished(const char *url, const char *errorMessage, int logoutResult) {
     @autoreleasepool {
         NSString *link = [NSString stringWithUTF8String:url];

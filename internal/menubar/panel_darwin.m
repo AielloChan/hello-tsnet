@@ -2,6 +2,7 @@
 
 extern void goMenuRefresh(void);
 extern void goMenuLogout(void);
+extern unsigned long long goMenuSetProbing(int active);
 
 NSColor *HTThemeAccentColor(void) {
     return [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
@@ -90,12 +91,14 @@ static NSBox *card(NSView *view, NSSize padding) {
 @property(nonatomic, copy) NSArray<NSDictionary *> *visibleDevices;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, strong) NSTimer *feedbackTimer;
+@property(nonatomic) unsigned long long probeSession;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSDictionary *> *latencies;
 @end
 
 @implementation HTDevicePanel
 
 - (instancetype)init {
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 960, 550)
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1040, 550)
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
     self = [super initWithWindow:window];
@@ -103,7 +106,7 @@ static NSBox *card(NSView *view, NSSize padding) {
 
     window.identifier = @"hello-tsnet.devices";
     window.title = @"Hello TSNet";
-    window.contentMinSize = NSMakeSize(850, 410);
+    window.contentMinSize = NSMakeSize(930, 410);
     window.releasedWhenClosed = NO;
     window.delegate = self;
     [window center];
@@ -181,10 +184,10 @@ static NSBox *card(NSView *view, NSSize padding) {
     self.table.rowHeight = 57;
     self.table.intercellSpacing = NSMakeSize(8, 0);
     self.table.autoresizingMask = NSViewWidthSizable;
-    NSArray *keys = @[@"number", @"name", @"addresses", @"os", @"state", @"lastSeen"];
-    NSArray *titles = @[@"序号", @"设备名称", @"Tailscale 地址", @"系统", @"状态", @"上次在线"];
-    NSArray *widths = @[@42, @205, @311, @80, @100, @122];
-    NSArray *minimums = @[@42, @135, @294, @60, @86, @115];
+    NSArray *keys = @[@"number", @"name", @"addresses", @"os", @"state", @"latency", @"lastSeen"];
+    NSArray *titles = @[@"序号", @"设备名称", @"Tailscale 地址", @"系统", @"状态", @"Ping", @"上次在线"];
+    NSArray *widths = @[@42, @205, @311, @80, @100, @80, @122];
+    NSArray *minimums = @[@42, @135, @294, @60, @86, @72, @115];
     for (NSUInteger index = 0; index < keys.count; index++) {
         NSTableColumn *tableColumn = [[NSTableColumn alloc] initWithIdentifier:keys[index]];
         tableColumn.title = titles[index];
@@ -284,6 +287,42 @@ static NSBox *card(NSView *view, NSSize padding) {
     [self.window makeFirstResponder:tabs];
     self.settingsPage.hidden = tabs.selectedSegment == 0;
     self.devicePage.hidden = !self.settingsPage.hidden;
+    [self setProbing:self.window.isKeyWindow && !self.devicePage.hidden];
+}
+
+- (void)setProbing:(BOOL)active {
+    if (active == (self.probeSession != 0)) { return; }
+    self.probeSession = goMenuSetProbing(active);
+    self.latencies = [NSMutableDictionary dictionary];
+    [self reloadLatencies];
+}
+
+- (void)windowDidBecomeKey:(NSNotification *)notification {
+    [self setProbing:!self.devicePage.hidden];
+}
+
+- (void)windowDidResignKey:(NSNotification *)notification { [self setProbing:NO]; }
+
+- (void)windowDidMiniaturize:(NSNotification *)notification { [self setProbing:NO]; }
+
+- (void)reloadLatencies {
+    NSInteger column = [self.table columnWithIdentifier:@"latency"];
+    if (column >= 0 && self.visibleDevices.count) {
+        [self.table reloadDataForRowIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, self.visibleDevices.count)]
+            columnIndexes:[NSIndexSet indexSetWithIndex:column]];
+    }
+}
+
+- (void)updateLatency:(NSDictionary *)result session:(unsigned long long)session {
+    if (!self.probeSession || session != self.probeSession) { return; }
+    for (NSDictionary *device in self.devices) {
+        if ([device[@"id"] isEqual:result[@"id"]] && [device[@"state"] isEqualToString:@"online"] &&
+            [device[@"addresses"] containsObject:result[@"address"]]) {
+            self.latencies[result[@"id"]] = result;
+            [self reloadLatencies];
+            break;
+        }
+    }
 }
 
 - (void)show {
@@ -300,6 +339,7 @@ static NSBox *card(NSView *view, NSSize padding) {
 }
 
 - (void)windowWillClose:(NSNotification *)notification {
+    [self setProbing:NO];
     [self.timer invalidate];
     self.timer = nil;
     [self.feedbackTimer invalidate];
@@ -341,6 +381,12 @@ static NSBox *card(NSView *view, NSSize padding) {
     NSImage *icon = [NSImage imageWithSystemSymbolName:@"document.on.document" accessibilityDescription:nil];
     button.image = [icon imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:11 weight:NSFontWeightMedium]];
     button.imagePosition = NSImageTrailing;
+    // Truncating button cells report a shortened intrinsic width. Prefer the
+    // full title and copy icon, while allowing the table cell to constrain it.
+    NSLayoutConstraint *fullWidth = [button.widthAnchor constraintGreaterThanOrEqualToConstant:
+        ceil(button.attributedTitle.size.width + button.image.size.width + 8)];
+    fullWidth.priority = NSLayoutPriorityDefaultHigh;
+    fullWidth.active = YES;
     button.contentTintColor = NSColor.secondaryLabelColor;
     button.toolTip = [@"复制 " stringByAppendingString:address];
     [button setAccessibilityLabel:button.toolTip];
@@ -384,6 +430,15 @@ static NSBox *card(NSView *view, NSSize padding) {
         }
         self.devices = unknown;
     }
+    NSMutableDictionary *currentLatencies = [NSMutableDictionary dictionary];
+    for (NSDictionary *device in self.devices) {
+        NSDictionary *result = self.latencies[device[@"id"] ?: @""];
+        if ([device[@"state"] isEqualToString:@"online"] && result &&
+            [device[@"addresses"] containsObject:result[@"address"]]) {
+            currentLatencies[device[@"id"]] = result;
+        }
+    }
+    self.latencies = currentLatencies;
     [self filter];
 }
 
@@ -413,6 +468,15 @@ static NSBox *card(NSView *view, NSSize padding) {
     NSDictionary *device = self.visibleDevices[row];
     if ([tableColumn.identifier isEqualToString:@"number"]) { return [NSString stringWithFormat:@"%ld", (long)row + 1]; }
     if ([tableColumn.identifier isEqualToString:@"lastSeen"]) { return lastSeenTime(device[@"lastSeen"]); }
+    if ([tableColumn.identifier isEqualToString:@"latency"]) {
+        if (![device[@"state"] isEqualToString:@"online"]) { return @"—"; }
+        NSDictionary *result = self.latencies[device[@"id"] ?: @""];
+        if (![device[@"addresses"] containsObject:result[@"address"] ?: @""]) { result = nil; }
+        if (result[@"milliseconds"]) { return [NSString stringWithFormat:@"%.1f ms", [result[@"milliseconds"] doubleValue]]; }
+        if ([result[@"state"] isEqualToString:@"timeout"]) { return @"超时"; }
+        if (result) { return @"不可达"; }
+        return self.probeSession ? @"测量中…" : @"—";
+    }
     if ([tableColumn.identifier isEqualToString:@"addresses"]) {
         return [device[@"addresses"] componentsJoinedByString:@"\n"] ?: @"";
     }
@@ -467,6 +531,9 @@ static NSBox *card(NSView *view, NSSize padding) {
         [stack.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor]
     ]];
     for (NSView *line in lines) {
+        if ([line isKindOfClass:NSButton.class]) {
+            [line.widthAnchor constraintLessThanOrEqualToAnchor:stack.widthAnchor].active = YES;
+        }
         if ([line isKindOfClass:NSTextField.class]) {
             NSTextField *field = (NSTextField *)line;
             field.toolTip = field.stringValue;

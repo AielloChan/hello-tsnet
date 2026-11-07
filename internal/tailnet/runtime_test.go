@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +31,10 @@ type fakeBackend struct {
 func (b *fakeBackend) NetworkStatus(context.Context) (*ipnstate.Status, error) {
 	b.statusCalls++
 	return b.networkStatus, b.statusErr
+}
+
+func (b *fakeBackend) Ping(context.Context, netip.Addr) (time.Duration, error) {
+	return 0, errors.New("ping unavailable")
 }
 
 func newFakeBackend() *fakeBackend {

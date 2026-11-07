@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"hello-tsnet/internal/direct"
 	"tailscale.com/ipn/ipnstate"
@@ -34,6 +36,7 @@ type Status struct {
 
 type backend interface {
 	NetworkStatus(context.Context) (*ipnstate.Status, error)
+	Ping(context.Context, netip.Addr) (time.Duration, error)
 	Start() error
 	WaitReady(context.Context) error
 	Login(context.Context) (string, error)

@@ -10,6 +10,7 @@ typedef NS_ENUM(NSInteger, HTRouteHelperAction) {
 @property(nonatomic, copy) void (^routeHelperAction)(HTRouteHelperAction action);
 - (void)show;
 - (void)update:(NSDictionary *)snapshot;
+- (void)updateLatency:(NSDictionary *)result session:(unsigned long long)session;
 - (void)updateRouteHelperInstalled:(BOOL)installed upgrade:(BOOL)upgrade busy:(BOOL)busy;
 - (void)resetAccountAction;
 @end
