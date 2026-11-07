@@ -154,8 +154,8 @@ int main(void) {
         iconState = HTMenuIconReady;
         [delegate refreshStatusIcon];
         NSImage *ready = delegate.statusItem.button.image;
-        if (litDots(ready) != 0b000111010) {
-            NSLog(@"Ready icon must light the top-center dot and all middle dots");
+        if (litDots(ready) != 0b100011110) {
+            NSLog(@"Ready icon must light the top two right dots, middle two left dots, and bottom-right dot");
             return 1;
         }
         CGFloat width = horizontalInkWidth(ready);

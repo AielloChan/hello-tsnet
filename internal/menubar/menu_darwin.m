@@ -83,7 +83,8 @@ static void showError(NSString *message) {
     if (self.quitting) { return; }
     int state = goMenuIconState();
     BOOL loading = state == HTMenuIconLoading;
-    const NSUInteger ready = 0b000111010;
+    // Top center and right, middle left and center, bottom right.
+    const NSUInteger ready = 0b100011110;
     NSUInteger lit = state == HTMenuIconReady ? ready : 0;
     if (loading) {
         do {
