@@ -208,7 +208,6 @@ static NSBox *card(NSView *view, NSSize padding) {
 }
 
 - (NSView *)makeSettingsPage {
-    NSTextField *title = label(@"设置", 27, NSFontWeightBold, NSColor.labelColor);
     NSTextField *section = label(@"Tailscale 账号", 15, NSFontWeightSemibold, NSColor.labelColor);
     self.accountName = label(@"正在读取账号…", 15, NSFontWeightMedium, NSColor.labelColor);
     self.accountLogin = label(@"", 13, NSFontWeightRegular, NSColor.secondaryLabelColor);
@@ -235,16 +234,12 @@ static NSBox *card(NSView *view, NSSize padding) {
     helperRow.spacing = 12;
     NSBox *helperCard = card(helperRow, NSMakeSize(18, 16));
     NSView *page = [NSView new];
-    title.translatesAutoresizingMaskIntoConstraints = NO;
     accountCard.translatesAutoresizingMaskIntoConstraints = NO;
     helperCard.translatesAutoresizingMaskIntoConstraints = NO;
-    [page addSubview:title];
     [page addSubview:accountCard];
     [page addSubview:helperCard];
     [NSLayoutConstraint activateConstraints:@[
-        [title.topAnchor constraintEqualToAnchor:page.topAnchor],
-        [title.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
-        [accountCard.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:16],
+        [accountCard.topAnchor constraintEqualToAnchor:page.topAnchor],
         [accountCard.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
         [accountCard.trailingAnchor constraintEqualToAnchor:page.trailingAnchor],
         [accountCard.heightAnchor constraintEqualToConstant:112],

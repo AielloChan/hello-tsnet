@@ -262,6 +262,11 @@ int main(void) {
         tabs.selectedSegment = 1;
         [delegate.panel performSelector:@selector(changePage:) withObject:tabs];
         if (probing) { NSLog(@"Settings must stop latency probes"); return 1; }
+        NSView *settings = [delegate.panel valueForKey:@"settingsPage"];
+        if (containsLabelText(settings, @"设置") || !containsLabelText(settings, @"Tailscale 账号")) {
+            NSLog(@"Settings must start with the account card without a large page title");
+            return 1;
+        }
         tabs.selectedSegment = 0;
         [delegate.panel performSelector:@selector(changePage:) withObject:tabs];
         [delegate.panel windowDidBecomeKey:focus];
