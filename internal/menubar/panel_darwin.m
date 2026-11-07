@@ -241,7 +241,7 @@ static NSBox *card(NSView *view, NSSize padding) {
         @"助手为 Tailscale 设备设置专用路由，通过 macOS 虚拟网卡（utun）把流量交给 Hello TSNet，让本机应用直接访问这些设备。"
          "新版助手还会同步本机的名称解析（hosts），让你用设备域名直接连接。"];
     helperDescription.font = [NSFont systemFontOfSize:12];
-    helperDescription.textColor = NSColor.secondaryLabelColor;
+    helperDescription.textColor = NSColor.tertiaryLabelColor;
     NSStackView *helperContent = column(@[helperRow, helperDescription], 8);
     [helperRow.widthAnchor constraintEqualToAnchor:helperContent.widthAnchor].active = YES;
     [helperDescription.widthAnchor constraintEqualToAnchor:helperContent.widthAnchor].active = YES;

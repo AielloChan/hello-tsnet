@@ -415,13 +415,23 @@ int main(void) {
             return 1;
         }
         __block CGFloat lightText = 0, darkText = 0;
+        __block BOOL lightIsSubtle = NO, darkIsSubtle = NO;
+        NSTextField *helperStatus = [delegate.panel valueForKey:@"routeHelperStatus"];
         [[NSAppearance appearanceNamed:NSAppearanceNameAqua] performAsCurrentDrawingAppearance:^{
-            lightText = [helperDescription.textColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace].redComponent;
+            NSColor *description = [helperDescription.textColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+            lightText = description.redComponent;
+            lightIsSubtle = description.alphaComponent < [helperStatus.textColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace].alphaComponent;
         }];
         [[NSAppearance appearanceNamed:NSAppearanceNameDarkAqua] performAsCurrentDrawingAppearance:^{
-            darkText = [helperDescription.textColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace].redComponent;
+            NSColor *description = [helperDescription.textColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+            darkText = description.redComponent;
+            darkIsSubtle = description.alphaComponent < [helperStatus.textColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace].alphaComponent;
         }];
         if (lightText >= darkText) { NSLog(@"Helper description must adapt to light and dark appearance"); return 1; }
+        if (!lightIsSubtle || !darkIsSubtle) {
+            NSLog(@"Helper description must be more subdued than its installation status in both appearances");
+            return 1;
+        }
         [panel setContentSize:previousSize];
         [panel.contentView layoutSubtreeIfNeeded];
         NSColorWell *colorWell = [options valueForKey:@"menuBarColorWell"];
