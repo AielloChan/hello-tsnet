@@ -77,11 +77,17 @@ func SetInstalled(ctx context.Context, installed bool) error {
 	case "cancelled":
 		return nil
 	case "completed":
-		if installed == NeedsInstall() || installed && NeedsUpgrade() {
-			return errors.New("未能确认路由助手的安装状态")
-		}
-		return nil
+		return confirmHelperOperation(installed, NeedsInstall, NeedsUpgrade)
 	default:
 		return errors.New("未能确认路由助手操作已完成")
 	}
+}
+
+func confirmHelperOperation(installed bool, needsInstall, needsUpgrade func() bool) error {
+	// Bootstrap has succeeded, but launchd may still be publishing the socket.
+	// Confirm the installed version and let route sync wait for the socket.
+	if (installed && needsUpgrade()) || (!installed && !needsInstall()) {
+		return errors.New("未能确认路由助手的安装状态")
+	}
+	return nil
 }
