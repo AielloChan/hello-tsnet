@@ -31,14 +31,15 @@ func TestLogoutClearsAccountAndRequiresExplicitLogin(t *testing.T) {
 	if got := runtime.Status().Account; got == nil || got.Login != "current@example.com" {
 		t.Fatalf("account = %+v", got)
 	}
-	if got := runtime.Status().LocalAddresses; !slices.Equal(got, []string{"100.64.0.1", "fd7a:115c:a1e0::1"}) {
-		t.Fatalf("local addresses = %v", got)
+	if local := runtime.Status().LocalDevice; local == nil || !local.Local || local.State != "unknown" ||
+		!slices.Equal(local.Addresses, []string{"100.64.0.1", "fd7a:115c:a1e0::1"}) {
+		t.Fatalf("local device while control plane is unavailable = %+v", local)
 	}
 	if err := runtime.Logout(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	runtime.applyNetworkStatus(current) // A stale running snapshot must not reopen the panel.
-	if got := runtime.Status(); got.State != StateSignedOut || got.Account != nil || got.AuthURL != "" || len(got.LocalAddresses) != 0 {
+	if got := runtime.Status(); got.State != StateSignedOut || got.Account != nil || got.AuthURL != "" || got.LocalDevice != nil {
 		t.Fatalf("after logout = %+v", got)
 	}
 	if _, err := runtime.Login(t.Context()); err != nil {

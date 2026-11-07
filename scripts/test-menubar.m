@@ -51,11 +51,11 @@ static NSURL *openedURL;
 - (BOOL)testOpenURL:(NSURL *)url { openedURL = url; return YES; }
 @end
 
-static BOOL containsApplicationName(NSView *view) {
+static BOOL containsLabelText(NSView *view, NSString *text) {
     if ([view isKindOfClass:NSTextField.class] &&
-        [((NSTextField *)view).stringValue isEqualToString:@"Hello TSNet"]) { return YES; }
+        [((NSTextField *)view).stringValue isEqualToString:text]) { return YES; }
     for (NSView *child in view.subviews) {
-        if (containsApplicationName(child)) { return YES; }
+        if (containsLabelText(child, text)) { return YES; }
     }
     return NO;
 }
@@ -174,7 +174,7 @@ int main(void) {
         [menu performActionForItemAtIndex:0];
         NSWindow *aboutWindow = nil;
         for (NSWindow *window in NSApp.windows) {
-            if (window.isVisible && containsApplicationName(window.contentView)) { aboutWindow = window; }
+            if (window.isVisible && containsLabelText(window.contentView, @"Hello TSNet")) { aboutWindow = window; }
         }
         if (!aboutWindow) {
             NSLog(@"About menu did not display the application name");
@@ -202,17 +202,44 @@ int main(void) {
             NSLog(@"Control panel must open an AppKit device window without launching a browser");
             return 1;
         }
+        NSDictionary *status = @{ @"state": @"ready", @"access": @"设备直访已启用",
+            @"account": @{ @"name": @"Test User", @"login": @"test@example.com", @"tailnet": @"test.ts.net" },
+            @"localDevice": @{ @"id": @"self", @"local": @YES, @"name": @"Hello TSNet", @"dnsName": @"hello-tsnet.tailtest.ts.net",
+                @"addresses": @[@"100.64.0.1", @"fd7a:115c:a1e0::1"], @"os": @"macOS", @"state": @"online" } };
+        NSTableView *table = [delegate.panel valueForKey:@"table"];
+        [delegate.panel update:@{ @"status": status, @"deviceError": @"暂时无法读取设备" }];
+        if (table.numberOfRows != 1) {
+            NSLog(@"Local device must remain visible when peer status is unavailable");
+            return 1;
+        }
         [delegate.panel update:@{
-            @"status": @{ @"state": @"ready", @"access": @"设备直访已启用",
-                @"localAddresses": @[@"100.64.0.1", @"fd7a:115c:a1e0::1"],
-                @"account": @{ @"name": @"Test User", @"login": @"test@example.com", @"tailnet": @"test.ts.net" } },
+            @"status": status,
             @"devices": @[
                 @{ @"id": @"mini", @"name": @"Mac mini", @"dnsName": @"mac-mini.tailtest.ts.net",
                    @"addresses": @[@"100.64.0.2", @"fd7a:115c:a1e0::2"], @"state": @"online" },
                 @{ @"name": @"NAS", @"state": @"offline", @"lastSeen": @"2026-11-05T00:11:22.123Z" }
             ]
         }];
-        NSTableView *table = [delegate.panel valueForKey:@"table"];
+        NSTableColumn *nameColumn = [table tableColumnWithIdentifier:@"name"];
+        [panel.contentView layoutSubtreeIfNeeded];
+        NSTableRowView *localRow = [table rowViewAtRow:0 makeIfNecessary:YES];
+        NSTableRowView *peerRow = [table rowViewAtRow:1 makeIfNecessary:YES];
+        if (!containsLabelText(localRow, @"本机") || !localRow.backgroundColor ||
+            [localRow.backgroundColor isEqual:peerRow.backgroundColor]) {
+            NSLog(@"Local device must have its own row background and badge");
+            return 1;
+        }
+        NSSearchField *search = [delegate.panel valueForKey:@"search"];
+        search.stringValue = @"NAS";
+        [delegate.panel controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:search]];
+        if (table.numberOfRows != 2 ||
+            ![[delegate.panel tableView:table objectValueForTableColumn:nameColumn row:0] isEqualToString:@"Hello TSNet"] ||
+            ![[delegate.panel tableView:table objectValueForTableColumn:nameColumn row:1] isEqualToString:@"NAS"]) {
+            NSLog(@"Local device must remain first while searching peers");
+            return 1;
+        }
+        search.stringValue = @"";
+        [delegate.panel controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:search]];
         // Drive delegate notifications explicitly so the harness does not depend on focus timing.
         NSNotification *focus = [NSNotification notificationWithName:NSWindowDidBecomeKeyNotification object:panel];
         [delegate.panel windowDidBecomeKey:focus];
@@ -220,8 +247,9 @@ int main(void) {
         if (!probing || !pingColumn) { NSLog(@"Device panel must start latency probes"); return 1; }
         unsigned long long firstProbeSession = probeSession;
         [delegate.panel updateLatency:@{ @"id": @"mini", @"address": @"100.64.0.2", @"milliseconds": @12.5 } session:probeSession];
-        if (![[delegate.panel tableView:table objectValueForTableColumn:pingColumn row:0] isEqualToString:@"12.5 ms"] ||
-            ![[delegate.panel tableView:table objectValueForTableColumn:pingColumn row:1] isEqualToString:@"—"]) {
+        if (![[delegate.panel tableView:table objectValueForTableColumn:pingColumn row:0] isEqualToString:@"—"] ||
+            ![[delegate.panel tableView:table objectValueForTableColumn:pingColumn row:1] isEqualToString:@"12.5 ms"] ||
+            ![[delegate.panel tableView:table objectValueForTableColumn:pingColumn row:2] isEqualToString:@"—"]) {
             NSLog(@"Online latency and offline placeholders must be distinct"); return 1;
         }
         NSSegmentedControl *tabs = [NSSegmentedControl new];
@@ -233,15 +261,14 @@ int main(void) {
         [delegate.panel performSelector:@selector(changePage:) withObject:tabs];
         [delegate.panel windowDidBecomeKey:focus];
         [delegate.panel updateLatency:@{ @"id": @"mini", @"address": @"100.64.0.2", @"milliseconds": @999 } session:firstProbeSession];
-        if (!probing || [[delegate.panel tableView:table objectValueForTableColumn:pingColumn row:0] isEqualToString:@"999.0 ms"]) {
+        if (!probing || [[delegate.panel tableView:table objectValueForTableColumn:pingColumn row:1] isEqualToString:@"999.0 ms"]) {
             NSLog(@"Reopening must discard stale latency results"); return 1;
         }
         [delegate.panel windowDidResignKey:[NSNotification notificationWithName:NSWindowDidResignKeyNotification object:panel]];
         if (probing) { NSLog(@"Background panel must stop latency probes"); return 1; }
         [delegate.panel windowDidBecomeKey:focus];
-        NSTableColumn *nameColumn = [table tableColumnWithIdentifier:@"name"];
-        if (table.numberOfRows != 2 ||
-            ![[delegate.panel tableView:table objectValueForTableColumn:nameColumn row:0] isEqualToString:@"Mac mini"]) {
+        if (table.numberOfRows != 3 ||
+            ![[delegate.panel tableView:table objectValueForTableColumn:nameColumn row:1] isEqualToString:@"Mac mini"]) {
             NSLog(@"Device snapshot did not populate the native table");
             return 1;
         }
@@ -270,7 +297,7 @@ int main(void) {
         [panel setContentSize:panel.contentMinSize];
         [panel.contentView layoutSubtreeIfNeeded];
         for (NSString *address in @[@"100.64.0.1", @"fd7a:115c:a1e0::1", @"100.64.0.2", @"fd7a:115c:a1e0::2",
-                                      @"mac-mini.tailtest.ts.net", @"mac-mini.local"]) {
+                                      @"hello-tsnet.tailtest.ts.net", @"mac-mini.tailtest.ts.net", @"mac-mini.local"]) {
             NSButton *button = findButton(panel.contentView, address);
             [button performClick:nil];
             if (!button.image || button.imagePosition != NSImageTrailing ||
@@ -288,7 +315,7 @@ int main(void) {
         }
         NSTableColumn *numberColumn = [table tableColumnWithIdentifier:@"number"];
         NSTableColumn *lastSeenColumn = [table tableColumnWithIdentifier:@"lastSeen"];
-        NSString *seen = [delegate.panel tableView:table objectValueForTableColumn:lastSeenColumn row:1];
+        NSString *seen = [delegate.panel tableView:table objectValueForTableColumn:lastSeenColumn row:2];
         if (!table.usesAlternatingRowBackgroundColors || !numberColumn || !lastSeenColumn ||
             ![[delegate.panel tableView:table objectValueForTableColumn:numberColumn row:0] isEqualToString:@"1"] ||
             ![[delegate.panel tableView:table objectValueForTableColumn:numberColumn row:1] isEqualToString:@"2"] ||

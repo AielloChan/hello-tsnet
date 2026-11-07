@@ -32,13 +32,13 @@ func (r *Runtime) applyNetworkStatus(network *ipnstate.Status) {
 		if network.CurrentTailnet != nil {
 			account.Tailnet = network.CurrentTailnet.Name
 		}
-		local := routehelper.AssignedAddresses(network.TailscaleIPs)
-		addresses := make([]string, 0, len(local))
-		for _, addr := range local {
-			addresses = append(addresses, addr.String())
+		local := displayDevice(network.Self, routehelper.AssignedAddresses(network.TailscaleIPs))
+		local.Local = true
+		if local.Name == "" {
+			local.Name = "Hello TSNet"
 		}
 		r.status.State, r.status.AuthURL, r.status.Account = StateReady, "", account
-		r.status.LocalAddresses = addresses
+		r.status.LocalDevice = &local
 	case "NeedsLogin", "NeedsMachineAuth", "Stopped", "NoState":
 		if r.status.State == StateReady {
 			r.status = Status{State: StateSignedOut}

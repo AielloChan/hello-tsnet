@@ -76,8 +76,6 @@ static NSBox *card(NSView *view, NSSize padding) {
 @property(nonatomic, strong) NSTextField *tailnet;
 @property(nonatomic, strong) NSTextField *notice;
 @property(nonatomic, strong) NSTextField *deviceCount;
-@property(nonatomic, strong) NSStackView *localAddressRow;
-@property(nonatomic, copy) NSArray<NSString *> *localAddresses;
 @property(nonatomic, strong) NSPopover *addressFeedback;
 @property(nonatomic, strong) NSTextField *accountName;
 @property(nonatomic, strong) NSTextField *accountLogin;
@@ -87,6 +85,7 @@ static NSBox *card(NSView *view, NSSize padding) {
 @property(nonatomic, strong) NSButton *routeHelperUpgradeButton;
 @property(nonatomic, strong) NSSearchField *search;
 @property(nonatomic, strong) NSTableView *table;
+@property(nonatomic, copy) NSDictionary *localDevice;
 @property(nonatomic, copy) NSArray<NSDictionary *> *devices;
 @property(nonatomic, copy) NSArray<NSDictionary *> *visibleDevices;
 @property(nonatomic, strong) NSTimer *timer;
@@ -159,13 +158,7 @@ static NSBox *card(NSView *view, NSSize padding) {
     self.notice = [NSTextField wrappingLabelWithString:@"正在读取 Tailnet 设备…"];
     self.notice.textColor = NSColor.secondaryLabelColor;
     self.notice.font = [NSFont systemFontOfSize:12];
-    self.localAddressRow = [NSStackView stackViewWithViews:@[
-        label(@"本机 Tailnet 地址", 12, NSFontWeightMedium, NSColor.secondaryLabelColor)
-    ]];
-    self.localAddressRow.alignment = NSLayoutAttributeCenterY;
-    self.localAddressRow.spacing = 12;
-    self.localAddressRow.hidden = YES;
-    NSStackView *heading = column(@[title, self.localAddressRow, self.notice], 6);
+    NSStackView *heading = column(@[title, self.notice], 6);
 
     self.search = [[NSSearchField alloc] initWithFrame:NSZeroRect];
     self.search.placeholderString = @"搜索设备名称、IP 或系统";
@@ -393,22 +386,9 @@ static NSBox *card(NSView *view, NSSize padding) {
     return button;
 }
 
-- (void)updateLocalAddresses:(NSArray<NSString *> *)addresses {
-    if ([self.localAddresses isEqualToArray:addresses]) { return; }
-    self.localAddresses = addresses;
-    NSArray *views = self.localAddressRow.arrangedSubviews;
-    for (NSUInteger i = 1; i < views.count; i++) {
-        [self.localAddressRow removeArrangedSubview:views[i]];
-        [views[i] removeFromSuperview];
-    }
-    for (NSString *address in addresses) {
-        [self.localAddressRow addArrangedSubview:[self addressButton:address]];
-    }
-    self.localAddressRow.hidden = addresses.count == 0;
-}
-
 - (void)update:(NSDictionary *)snapshot {
     NSDictionary *status = snapshot[@"status"];
+    self.localDevice = status[@"localDevice"];
     NSDictionary *account = status[@"account"];
     NSString *network = account[@"tailnet"];
     self.tailnet.stringValue = network.length ? network : @"Tailscale";
@@ -418,7 +398,6 @@ static NSBox *card(NSView *view, NSSize padding) {
     self.accountLogin.stringValue = name.length ? login ?: @"" : @"";
     self.accountName.toolTip = self.accountName.stringValue;
     self.accountLogin.toolTip = self.accountLogin.stringValue;
-    [self updateLocalAddresses:status[@"localAddresses"] ?: @[]];
     self.notice.stringValue = status[@"error"] ?: snapshot[@"deviceError"] ?: status[@"access"] ?: @"Tailscale 已连接";
     if (snapshot[@"devices"]) { self.devices = snapshot[@"devices"]; }
     if (snapshot[@"deviceError"]) {
@@ -445,15 +424,17 @@ static NSBox *card(NSView *view, NSSize padding) {
 - (void)filter {
     NSString *query = [self.search.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSMutableArray *matches = [NSMutableArray array];
+    if (self.localDevice) { [matches addObject:self.localDevice]; }
     for (NSDictionary *device in self.devices) {
         NSString *haystack = [NSString stringWithFormat:@"%@ %@ %@ %@",
             device[@"name"] ?: @"", device[@"dnsName"] ?: @"", device[@"os"] ?: @"",
             [device[@"addresses"] componentsJoinedByString:@" "] ?: @""];
         if (query.length == 0 || [haystack localizedCaseInsensitiveContainsString:query]) { [matches addObject:device]; }
     }
+    NSUInteger total = self.devices.count + (self.localDevice ? 1 : 0);
     self.deviceCount.stringValue = query.length == 0
         ? [NSString stringWithFormat:@"%lu 台设备", (unsigned long)matches.count]
-        : [NSString stringWithFormat:@"%lu / %lu 台设备", (unsigned long)matches.count, (unsigned long)self.devices.count];
+        : [NSString stringWithFormat:@"%lu / %lu 台设备", (unsigned long)matches.count, (unsigned long)total];
     if (![matches isEqualToArray:self.visibleDevices]) {
         self.visibleDevices = matches;
         [self.table reloadData];
@@ -464,12 +445,19 @@ static NSBox *card(NSView *view, NSSize padding) {
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView { return self.visibleDevices.count; }
 
+- (NSTableRowView *)tableView:(NSTableView *)tableView rowViewForRow:(NSInteger)row {
+    if (![self.visibleDevices[row][@"local"] boolValue]) { return nil; }
+    NSTableRowView *view = [[NSTableRowView alloc] initWithFrame:NSZeroRect];
+    view.backgroundColor = [NSColor.systemBlueColor colorWithAlphaComponent:0.10];
+    return view;
+}
+
 - (id)tableView:(NSTableView *)tableView objectValueForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
     NSDictionary *device = self.visibleDevices[row];
     if ([tableColumn.identifier isEqualToString:@"number"]) { return [NSString stringWithFormat:@"%ld", (long)row + 1]; }
     if ([tableColumn.identifier isEqualToString:@"lastSeen"]) { return lastSeenTime(device[@"lastSeen"]); }
     if ([tableColumn.identifier isEqualToString:@"latency"]) {
-        if (![device[@"state"] isEqualToString:@"online"]) { return @"—"; }
+        if ([device[@"local"] boolValue] || ![device[@"state"] isEqualToString:@"online"]) { return @"—"; }
         NSDictionary *result = self.latencies[device[@"id"] ?: @""];
         if (![device[@"addresses"] containsObject:result[@"address"] ?: @""]) { result = nil; }
         if (result[@"milliseconds"]) { return [NSString stringWithFormat:@"%.1f ms", [result[@"milliseconds"] doubleValue]]; }
@@ -495,12 +483,29 @@ static NSBox *card(NSView *view, NSSize padding) {
             [lines addObject:[self addressButton:address]];
         }
     } else if ([tableColumn.identifier isEqualToString:@"name"]) {
-        [lines addObject:label(value, 13, NSFontWeightSemibold, NSColor.labelColor)];
+        BOOL local = [device[@"local"] boolValue];
+        NSTextField *name = label(value, 13, NSFontWeightSemibold, NSColor.labelColor);
+        if (local) {
+            name.toolTip = value;
+            NSTextField *localLabel = label(@"本机", 10, NSFontWeightSemibold, NSColor.systemBlueColor);
+            [localLabel setContentCompressionResistancePriority:NSLayoutPriorityRequired
+                forOrientation:NSLayoutConstraintOrientationHorizontal];
+            NSBox *badge = card(localLabel, NSMakeSize(5, 1));
+            badge.cornerRadius = 4;
+            badge.borderWidth = 0;
+            badge.fillColor = [NSColor.systemBlueColor colorWithAlphaComponent:0.15];
+            NSStackView *heading = [NSStackView stackViewWithViews:@[name, badge]];
+            heading.alignment = NSLayoutAttributeCenterY;
+            heading.spacing = 6;
+            [lines addObject:heading];
+        } else {
+            [lines addObject:name];
+        }
         NSString *dns = device[@"dnsName"];
         if (dns.length && ![dns isEqualToString:value]) {
             [lines addObject:[self addressButton:dns]];
             NSArray<NSString *> *parts = [dns componentsSeparatedByString:@"."];
-            if (parts.count == 4 && [dns.lowercaseString hasSuffix:@".ts.net"]) {
+            if (!local && parts.count == 4 && [dns.lowercaseString hasSuffix:@".ts.net"]) {
                 [lines addObject:[self addressButton:[parts.firstObject stringByAppendingString:@".local"]]];
             }
         }
@@ -531,13 +536,10 @@ static NSBox *card(NSView *view, NSSize padding) {
         [stack.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor]
     ]];
     for (NSView *line in lines) {
-        if ([line isKindOfClass:NSButton.class]) {
-            [line.widthAnchor constraintLessThanOrEqualToAnchor:stack.widthAnchor].active = YES;
-        }
+        [line.widthAnchor constraintLessThanOrEqualToAnchor:stack.widthAnchor].active = YES;
         if ([line isKindOfClass:NSTextField.class]) {
             NSTextField *field = (NSTextField *)line;
             field.toolTip = field.stringValue;
-            [field.widthAnchor constraintLessThanOrEqualToAnchor:stack.widthAnchor].active = YES;
         }
     }
     return cell;

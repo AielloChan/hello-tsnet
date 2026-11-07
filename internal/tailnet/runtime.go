@@ -25,13 +25,13 @@ const (
 )
 
 type Status struct {
-	State          State    `json:"state"`
-	AuthURL        string   `json:"authUrl,omitempty"`
-	Error          string   `json:"error,omitempty"`
-	Access         string   `json:"access,omitempty"`
-	RoutesReady    bool     `json:"-"`
-	Account        *Account `json:"account,omitempty"`
-	LocalAddresses []string `json:"localAddresses,omitempty"`
+	State       State    `json:"state"`
+	AuthURL     string   `json:"authUrl,omitempty"`
+	Error       string   `json:"error,omitempty"`
+	Access      string   `json:"access,omitempty"`
+	RoutesReady bool     `json:"-"`
+	Account     *Account `json:"account,omitempty"`
+	LocalDevice *Device  `json:"localDevice,omitempty"`
 }
 
 type backend interface {
