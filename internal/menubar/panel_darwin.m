@@ -1,4 +1,5 @@
 #import "panel.h"
+#import "preferences.h"
 
 extern void goMenuRefresh(void);
 extern void goMenuLogout(void);
@@ -73,6 +74,7 @@ static NSBox *card(NSView *view, NSSize padding) {
 @interface HTDevicePanel ()
 @property(nonatomic, strong) NSView *devicePage;
 @property(nonatomic, strong) NSView *settingsPage;
+@property(nonatomic, strong, readwrite) HTPreferencesView *preferencesView;
 @property(nonatomic, strong) NSTextField *tailnet;
 @property(nonatomic, strong) NSTextField *notice;
 @property(nonatomic, strong) NSTextField *deviceCount;
@@ -233,11 +235,15 @@ static NSBox *card(NSView *view, NSSize padding) {
     helperRow.alignment = NSLayoutAttributeCenterY;
     helperRow.spacing = 12;
     NSBox *helperCard = card(helperRow, NSMakeSize(18, 16));
+    self.preferencesView = [[HTPreferencesView alloc] initWithFrame:NSZeroRect];
+    NSBox *preferencesCard = card(self.preferencesView, NSMakeSize(18, 12));
     NSView *page = [NSView new];
     accountCard.translatesAutoresizingMaskIntoConstraints = NO;
     helperCard.translatesAutoresizingMaskIntoConstraints = NO;
+    preferencesCard.translatesAutoresizingMaskIntoConstraints = NO;
     [page addSubview:accountCard];
     [page addSubview:helperCard];
+    [page addSubview:preferencesCard];
     [NSLayoutConstraint activateConstraints:@[
         [accountCard.topAnchor constraintEqualToAnchor:page.topAnchor],
         [accountCard.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
@@ -246,7 +252,11 @@ static NSBox *card(NSView *view, NSSize padding) {
         [helperCard.topAnchor constraintEqualToAnchor:accountCard.bottomAnchor constant:12],
         [helperCard.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
         [helperCard.trailingAnchor constraintEqualToAnchor:page.trailingAnchor],
-        [helperCard.heightAnchor constraintEqualToConstant:90]
+        [helperCard.heightAnchor constraintEqualToConstant:90],
+        [preferencesCard.topAnchor constraintEqualToAnchor:helperCard.bottomAnchor constant:12],
+        [preferencesCard.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
+        [preferencesCard.trailingAnchor constraintEqualToAnchor:page.trailingAnchor],
+        [preferencesCard.bottomAnchor constraintLessThanOrEqualToAnchor:page.bottomAnchor]
     ]];
     return page;
 }
@@ -272,6 +282,7 @@ static NSBox *card(NSView *view, NSSize padding) {
     [self.window makeFirstResponder:tabs];
     self.settingsPage.hidden = tabs.selectedSegment == 0;
     self.devicePage.hidden = !self.settingsPage.hidden;
+    if (!self.settingsPage.hidden) { [self.preferencesView refreshLoginItem]; }
     [self setProbing:self.window.isKeyWindow && !self.devicePage.hidden];
 }
 
@@ -283,6 +294,7 @@ static NSBox *card(NSView *view, NSSize padding) {
 }
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
+    if (!self.settingsPage.hidden) { [self.preferencesView refreshLoginItem]; }
     [self setProbing:!self.devicePage.hidden];
 }
 

@@ -1,4 +1,5 @@
 #import <AppKit/AppKit.h>
+#import <ServiceManagement/ServiceManagement.h>
 #import <objc/runtime.h>
 #import "../internal/menubar/menu_darwin.m"
 
@@ -26,6 +27,32 @@ static int authorizeCount, logoutCount;
 void goMenuAuthorize(void) { authorizeCount++; }
 void goMenuLogout(void) { logoutCount++; }
 int goMenuSignedIn(void) { return signedIn; }
+
+@interface HTTestLoginItem : NSObject
+@property(nonatomic) SMAppServiceStatus status;
+@property(nonatomic) NSUInteger registrations;
+@property(nonatomic) NSUInteger removals;
+@end
+@implementation HTTestLoginItem
+- (BOOL)registerAndReturnError:(NSError **)error {
+    self.registrations++;
+    self.status = SMAppServiceStatusRequiresApproval;
+    return YES;
+}
+- (BOOL)unregisterAndReturnError:(NSError **)error {
+    self.removals++;
+    self.status = SMAppServiceStatusNotRegistered;
+    return YES;
+}
+@end
+
+static HTTestLoginItem *testLoginItem;
+@interface SMAppService (MenuTests)
++ (SMAppService *)testMainAppService;
+@end
+@implementation SMAppService (MenuTests)
++ (SMAppService *)testMainAppService { return (SMAppService *)testLoginItem; }
+@end
 
 static NSPasteboard *testPasteboard;
 @interface NSPasteboard (MenuTests)
@@ -123,7 +150,15 @@ int main(void) {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
         [NSApp finishLaunching];
+        NSString *preferencesSuite = [@"org.hellotsnet.native-test." stringByAppendingString:NSUUID.UUID.UUIDString];
+        NSUserDefaults *preferences = [[NSUserDefaults alloc] initWithSuiteName:preferencesSuite];
+        testLoginItem = [HTTestLoginItem new];
+        testLoginItem.status = SMAppServiceStatusNotFound;
+        Method mainAppService = class_getClassMethod(SMAppService.class, @selector(mainAppService));
+        Method stubMainAppService = class_getClassMethod(SMAppService.class, @selector(testMainAppService));
+        method_exchangeImplementations(mainAppService, stubMainAppService);
         HTAppDelegate *delegate = [HTAppDelegate new];
+        delegate.preferences = preferences;
         [delegate applicationDidFinishLaunching:[NSNotification notificationWithName:NSApplicationDidFinishLaunchingNotification object:NSApp]];
         NSMenu *menu = delegate.statusItem.menu;
         NSArray *titles = [menu.itemArray valueForKey:@"title"];
@@ -135,14 +170,26 @@ int main(void) {
             NSLog(@"The menu icon must render its own pink color");
             return 1;
         }
-        NSImage *lightIcon = menuIcon(0, [NSAppearance appearanceNamed:NSAppearanceNameAqua]);
-        NSImage *darkIcon = menuIcon(0, [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]);
+        NSImage *lightIcon = menuIcon(0, [NSAppearance appearanceNamed:NSAppearanceNameAqua], nil);
+        NSImage *darkIcon = menuIcon(0, [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua], nil);
         NSColor *lightDot = dotColor([NSBitmapImageRep imageRepWithData:lightIcon.TIFFRepresentation], 0, 0);
         NSColor *darkDot = dotColor([NSBitmapImageRep imageRepWithData:darkIcon.TIFFRepresentation], 0, 0);
         if (lightDot.alphaComponent < 0.9 || lightDot.redComponent > 0.15 ||
             darkDot.alphaComponent < 0.9 || darkDot.greenComponent < 0.85) {
             NSLog(@"Unlit dots must be black in light mode and white in dark mode");
             return 1;
+        }
+        for (NSString *mode in @[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]) {
+            CGFloat neutral = [mode isEqualToString:NSAppearanceNameDarkAqua] ? 1 : 0;
+            NSColor *custom = [NSColor colorWithSRGBRed:neutral green:neutral blue:neutral alpha:1];
+            NSImage *image = menuIcon(1u << 1, [NSAppearance appearanceNamed:mode], custom);
+            NSBitmapImageRep *bitmap = [NSBitmapImageRep imageRepWithData:image.TIFFRepresentation];
+            NSColor *lit = dotColor(bitmap, 0, 1);
+            NSColor *unlit = dotColor(bitmap, 0, 0);
+            if (lit.alphaComponent - unlit.alphaComponent < 0.25) {
+                NSLog(@"A custom highlight matching the unlit color must still reveal the dot pattern");
+                return 1;
+            }
         }
         NSUInteger firstFrame = litDots(delegate.statusItem.button.image);
         [delegate refreshStatusIcon];
@@ -265,6 +312,64 @@ int main(void) {
         NSView *settings = [delegate.panel valueForKey:@"settingsPage"];
         if (containsLabelText(settings, @"设置") || !containsLabelText(settings, @"Tailscale 账号")) {
             NSLog(@"Settings must start with the account card without a large page title");
+            return 1;
+        }
+        if (!containsLabelText(settings, @"菜单栏亮点颜色") || !containsLabelText(settings, @"登录时启动") ||
+            !findButton(settings, @"恢复默认颜色")) {
+            NSLog(@"Settings must expose menu bar color and launch at login");
+            return 1;
+        }
+        HTPreferencesView *options = delegate.panel.preferencesView;
+        NSSize previousSize = panel.contentView.bounds.size;
+        [panel setContentSize:panel.contentMinSize];
+        [panel.contentView layoutSubtreeIfNeeded];
+        NSRect optionsFrame = [settings convertRect:options.bounds fromView:options];
+        if (NSIsEmptyRect(optionsFrame) || !NSContainsRect(settings.bounds, optionsFrame)) {
+            NSLog(@"Both preferences must fit at the minimum window size");
+            return 1;
+        }
+        [panel setContentSize:previousSize];
+        [panel.contentView layoutSubtreeIfNeeded];
+        NSColorWell *colorWell = [options valueForKey:@"menuBarColorWell"];
+        NSButton *resetColor = findButton(settings, @"恢复默认颜色");
+        NSColor *customColor = [NSColor colorWithSRGBRed:0.05 green:0.4 blue:0.85 alpha:1];
+        colorWell.color = customColor;
+        [colorWell sendAction:colorWell.action to:colorWell.target];
+        NSColor *changedDot = dotColor([NSBitmapImageRep imageRepWithData:delegate.statusItem.button.image.TIFFRepresentation], 0, 1);
+        if (!resetColor.enabled || changedDot.blueComponent < 0.75 || changedDot.redComponent > 0.15 || !storedMenuBarColor(preferences)) {
+            NSLog(@"Custom color must redraw the ready icon immediately and persist");
+            return 1;
+        }
+        [resetColor performClick:nil];
+        if (resetColor.enabled || storedMenuBarColor(preferences) || litDots(delegate.statusItem.button.image) != 0b100011110) {
+            NSLog(@"Reset must restore the default ready icon and remove the override");
+            return 1;
+        }
+        colorWell.color = customColor;
+        [colorWell sendAction:colorWell.action to:colorWell.target];
+
+        NSSwitch *login = [options valueForKey:@"loginItemSwitch"];
+        NSButton *openLoginItems = findButton(settings, @"打开登录项设置");
+        if (login.state != NSControlStateValueOff || !login.enabled || !openLoginItems.hidden || testLoginItem.registrations) {
+            NSLog(@"A missing login item must allow first registration without registering automatically");
+            return 1;
+        }
+        login.state = NSControlStateValueOn;
+        [login sendAction:login.action to:login.target];
+        if (testLoginItem.registrations != 1 || openLoginItems.hidden || !containsLabelText(settings, @"需在系统设置中允许")) {
+            NSLog(@"A login item awaiting approval must offer System Settings");
+            return 1;
+        }
+        testLoginItem.status = SMAppServiceStatusEnabled;
+        [delegate.panel windowDidBecomeKey:focus];
+        if (login.state != NSControlStateValueOn || !openLoginItems.hidden || !containsLabelText(settings, @"已开启")) {
+            NSLog(@"Returning from System Settings must refresh login item approval");
+            return 1;
+        }
+        login.state = NSControlStateValueOff;
+        [login sendAction:login.action to:login.target];
+        if (testLoginItem.removals != 1 || !containsLabelText(settings, @"已关闭")) {
+            NSLog(@"Turning off launch at login must remove the system registration");
             return 1;
         }
         tabs.selectedSegment = 0;
@@ -399,7 +504,13 @@ int main(void) {
         [menu.delegate menuNeedsUpdate:menu];
         routeHelperNeeded = YES;
         HTAppDelegate *setupDelegate = [HTAppDelegate new];
+        setupDelegate.preferences = preferences;
         [setupDelegate applicationDidFinishLaunching:[NSNotification notificationWithName:NSApplicationDidFinishLaunchingNotification object:NSApp]];
+        NSColor *restoredDot = dotColor([NSBitmapImageRep imageRepWithData:setupDelegate.statusItem.button.image.TIFFRepresentation], 0, 1);
+        if (restoredDot.blueComponent < 0.75 || restoredDot.redComponent > 0.15) {
+            NSLog(@"Restarting the menu must restore the saved color");
+            return 1;
+        }
         NSMenuItem *install = [setupDelegate.statusItem.menu itemWithTitle:@"安装路由助手…"];
         if (!install || installCount != 0) {
             NSLog(@"A missing route helper must offer installation without running it before consent");
@@ -425,6 +536,8 @@ int main(void) {
             return 1;
         }
         [NSStatusBar.systemStatusBar removeStatusItem:delegate.statusItem];
+        method_exchangeImplementations(mainAppService, stubMainAppService);
+        [preferences removePersistentDomainForName:preferencesSuite];
         puts("Native menu: action wiring, animated and ready icons, About open/close, native device panel, idempotent quit passed");
     }
     return 0;

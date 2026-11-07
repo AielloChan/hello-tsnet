@@ -1,6 +1,7 @@
 #import <AppKit/AppKit.h>
 #import "menu.h"
 #import "panel.h"
+#import "preferences.h"
 
 extern void goMenuQuit(void);
 extern void goMenuRefresh(void);
@@ -20,22 +21,42 @@ extern void goMenuUninstallRouteHelper(void);
 @property(nonatomic, strong) NSMenuItem *routeHelperItem;
 @property(nonatomic, strong) NSTimer *iconTimer;
 @property(nonatomic, strong) NSAppearance *iconAppearance;
+@property(nonatomic, strong) NSUserDefaults *preferences;
+@property(nonatomic, strong) NSColor *customMenuBarColor;
 @property(nonatomic) NSUInteger litDots;
 @property(nonatomic) BOOL routeHelperBusy;
 @property(nonatomic) BOOL quitting;
 @property(nonatomic) BOOL systemTermination;
 @end
 
-static NSImage *menuIcon(NSUInteger lit, NSAppearance *appearance) {
+static NSString *const menuBarColorKey = @"MenuBarHighlightColor";
+
+static NSColor *storedMenuBarColor(NSUserDefaults *preferences) {
+    NSArray<NSNumber *> *rgb = [preferences arrayForKey:menuBarColorKey];
+    if (rgb.count != 3) { return nil; }
+    for (NSNumber *component in rgb) {
+        if (![component isKindOfClass:NSNumber.class] ||
+            !(component.doubleValue >= 0 && component.doubleValue <= 1)) { return nil; }
+    }
+    return [NSColor colorWithSRGBRed:rgb[0].doubleValue green:rgb[1].doubleValue blue:rgb[2].doubleValue alpha:1];
+}
+
+static NSImage *menuIcon(NSUInteger lit, NSAppearance *appearance, NSColor *customColor) {
     return [NSImage imageWithSize:NSMakeSize(20, 20) flipped:NO drawingHandler:^BOOL(NSRect rect) {
         [appearance performAsCurrentDrawingAppearance:^{
-            NSColor *pink = HTThemeAccentColor();
+            NSColor *highlight = customColor ?: HTThemeAccentColor();
             NSString *mode = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
-            NSColor *unlit = [mode isEqualToString:NSAppearanceNameDarkAqua] ? NSColor.whiteColor : NSColor.blackColor;
+            BOOL dark = [mode isEqualToString:NSAppearanceNameDarkAqua];
+            NSColor *unlit = dark ? NSColor.whiteColor : NSColor.blackColor;
+            CGFloat neutral = dark ? 1 : 0;
+            if (customColor && fabs(customColor.redComponent - neutral) < 0.18 &&
+                fabs(customColor.greenComponent - neutral) < 0.18 && fabs(customColor.blueComponent - neutral) < 0.18) {
+                unlit = [unlit colorWithAlphaComponent:0.4];
+            }
             for (NSUInteger row = 0; row < 3; row++) {
                 for (NSUInteger column = 0; column < 3; column++) {
                     BOOL isLit = (lit & (1u << (row * 3 + column))) != 0;
-                    [(isLit ? pink : unlit) setFill];
+                    [(isLit ? highlight : unlit) setFill];
                     NSRect dot = NSMakeRect(rect.origin.x + 2 + column * 6,
                                            rect.origin.y + 2 + (2 - row) * 6, 4, 4);
                     [[NSBezierPath bezierPathWithOvalInRect:dot] fill];
@@ -58,6 +79,8 @@ static void showError(NSString *message) {
 
 @implementation HTAppDelegate
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    self.preferences = self.preferences ?: NSUserDefaults.standardUserDefaults;
+    self.customMenuBarColor = storedMenuBarColor(self.preferences);
     self.statusItem = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
     [self.statusItem.button setAccessibilityLabel:@"Hello TSNet"];
     [self refreshStatusIcon];
@@ -96,7 +119,7 @@ static void showError(NSString *message) {
     if (!button.image || lit != self.litDots || ![appearance isEqual:self.iconAppearance]) {
         self.litDots = lit;
         self.iconAppearance = appearance;
-        button.image = menuIcon(lit, appearance);
+        button.image = menuIcon(lit, appearance, self.customMenuBarColor);
     }
     button.toolTip = loading ? @"Hello TSNet 正在连接或配置路由…" : @"Hello TSNet";
     NSTimeInterval interval = loading ? 0.28 : 1.0;
@@ -110,6 +133,22 @@ static void showError(NSString *message) {
         self.iconTimer.tolerance = interval * 0.2;
         [NSRunLoop.mainRunLoop addTimer:self.iconTimer forMode:NSRunLoopCommonModes];
     }
+}
+
+- (void)applyMenuBarColor:(NSColor *)color {
+    if (color) {
+        NSColor *rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        if (rgb) {
+            [self.preferences setObject:@[@(rgb.redComponent), @(rgb.greenComponent), @(rgb.blueComponent)]
+                forKey:menuBarColorKey];
+        }
+    } else {
+        [self.preferences removeObjectForKey:menuBarColorKey];
+    }
+    self.customMenuBarColor = storedMenuBarColor(self.preferences);
+    self.statusItem.button.image = nil;
+    [self refreshStatusIcon];
+    [self.panel.preferencesView updateMenuBarColor:self.customMenuBarColor];
 }
 
 - (void)updateRouteHelperControls {
@@ -215,6 +254,10 @@ static void showError(NSString *message) {
         self.panel.routeHelperAction = ^(HTRouteHelperAction action) {
             [weakSelf requestRouteHelperAction:action];
         };
+        self.panel.preferencesView.menuBarColorAction = ^(NSColor *color) {
+            [weakSelf applyMenuBarColor:color];
+        };
+        [self.panel.preferencesView updateMenuBarColor:self.customMenuBarColor];
     }
     [self updateRouteHelperControls];
     [self.panel show];
