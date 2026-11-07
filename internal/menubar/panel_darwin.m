@@ -237,7 +237,15 @@ static NSBox *card(NSView *view, NSSize padding) {
         self.routeHelperUpgradeButton, self.routeHelperButton]];
     helperRow.alignment = NSLayoutAttributeCenterY;
     helperRow.spacing = 12;
-    NSBox *helperCard = card(helperRow, NSMakeSize(18, 16));
+    NSTextField *helperDescription = [NSTextField wrappingLabelWithString:
+        @"助手为 Tailscale 设备设置专用路由，通过 macOS 虚拟网卡（utun）把流量交给 Hello TSNet，让本机应用直接访问这些设备。"
+         "新版助手还会同步本机的名称解析（hosts），让你用设备域名直接连接。"];
+    helperDescription.font = [NSFont systemFontOfSize:12];
+    helperDescription.textColor = NSColor.secondaryLabelColor;
+    NSStackView *helperContent = column(@[helperRow, helperDescription], 8);
+    [helperRow.widthAnchor constraintEqualToAnchor:helperContent.widthAnchor].active = YES;
+    [helperDescription.widthAnchor constraintEqualToAnchor:helperContent.widthAnchor].active = YES;
+    NSBox *helperCard = card(helperContent, NSMakeSize(18, 16));
     self.preferencesView = [[HTPreferencesView alloc] initWithFrame:NSZeroRect];
     NSBox *preferencesCard = card(self.preferencesView, NSMakeSize(18, 12));
     NSView *page = [NSView new];
@@ -255,7 +263,6 @@ static NSBox *card(NSView *view, NSSize padding) {
         [helperCard.topAnchor constraintEqualToAnchor:accountCard.bottomAnchor constant:12],
         [helperCard.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
         [helperCard.trailingAnchor constraintEqualToAnchor:page.trailingAnchor],
-        [helperCard.heightAnchor constraintEqualToConstant:90],
         [preferencesCard.topAnchor constraintEqualToAnchor:helperCard.bottomAnchor constant:12],
         [preferencesCard.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
         [preferencesCard.trailingAnchor constraintEqualToAnchor:page.trailingAnchor],

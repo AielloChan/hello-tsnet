@@ -109,14 +109,17 @@ static NSURL *openedURL;
 - (BOOL)testOpenURL:(NSURL *)url { openedURL = url; return YES; }
 @end
 
-static BOOL containsLabelText(NSView *view, NSString *text) {
+static NSTextField *findLabelText(NSView *view, NSString *text) {
     if ([view isKindOfClass:NSTextField.class] &&
-        [((NSTextField *)view).stringValue isEqualToString:text]) { return YES; }
+        [((NSTextField *)view).stringValue isEqualToString:text]) { return (NSTextField *)view; }
     for (NSView *child in view.subviews) {
-        if (containsLabelText(child, text)) { return YES; }
+        NSTextField *field = findLabelText(child, text);
+        if (field) { return field; }
     }
-    return NO;
+    return nil;
 }
+
+static BOOL containsLabelText(NSView *view, NSString *text) { return findLabelText(view, text) != nil; }
 
 static BOOL containsLink(NSView *view, NSString *target) {
     if ([view isKindOfClass:NSTextView.class]) {
@@ -403,6 +406,22 @@ int main(void) {
             NSLog(@"Both preferences must fit at the minimum window size");
             return 1;
         }
+        NSTextField *helperDescription = findLabelText(settings,
+            @"助手为 Tailscale 设备设置专用路由，通过 macOS 虚拟网卡（utun）把流量交给 Hello TSNet，让本机应用直接访问这些设备。新版助手还会同步本机的名称解析（hosts），让你用设备域名直接连接。");
+        NSRect descriptionFrame = [settings convertRect:helperDescription.bounds fromView:helperDescription];
+        if (!helperDescription || NSIsEmptyRect(descriptionFrame) || !NSContainsRect(settings.bounds, descriptionFrame) ||
+            NSIntersectsRect(descriptionFrame, optionsFrame)) {
+            NSLog(@"The route helper explanation must fit above the preferences at minimum size");
+            return 1;
+        }
+        __block CGFloat lightText = 0, darkText = 0;
+        [[NSAppearance appearanceNamed:NSAppearanceNameAqua] performAsCurrentDrawingAppearance:^{
+            lightText = [helperDescription.textColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace].redComponent;
+        }];
+        [[NSAppearance appearanceNamed:NSAppearanceNameDarkAqua] performAsCurrentDrawingAppearance:^{
+            darkText = [helperDescription.textColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace].redComponent;
+        }];
+        if (lightText >= darkText) { NSLog(@"Helper description must adapt to light and dark appearance"); return 1; }
         [panel setContentSize:previousSize];
         [panel.contentView layoutSubtreeIfNeeded];
         NSColorWell *colorWell = [options valueForKey:@"menuBarColorWell"];
