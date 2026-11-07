@@ -6,6 +6,7 @@ import (
 	"hello-tsnet/internal/routehelper"
 	"net/netip"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -56,17 +57,17 @@ func (d *Device) Sync(ctx context.Context, fetch func(context.Context) (routehel
 					want := addrSet(known.Peers)
 					routed = slices.DeleteFunc(reply.Routed, func(addr netip.Addr) bool { return !want[addr] })
 					d.dispatch.setAddresses(known.Local, routed)
-					message := fmt.Sprintf("设备直访已启用 · %d 个地址", len(routed))
+					var warnings []string
 					if reply.Failed > 0 {
-						message += fmt.Sprintf(" · %d 条路由待同步", reply.Failed)
+						warnings = append(warnings, fmt.Sprintf("%d 条路由待同步", reply.Failed))
 					}
 					if fetchErr != nil {
-						message += " · 正在恢复设备同步"
+						warnings = append(warnings, "正在恢复设备同步")
 					}
 					if reply.HostsError != "" {
-						message += " · 主机名同步失败：" + reply.HostsError
+						warnings = append(warnings, "主机名同步失败："+reply.HostsError)
 					}
-					report(message, fetchErr == nil && reply.Failed == 0 && len(routed) == len(known.Peers))
+					report(strings.Join(warnings, " · "), fetchErr == nil && reply.Failed == 0 && len(routed) == len(known.Peers))
 				}
 			}
 		} else {

@@ -154,11 +154,9 @@ static NSBox *card(NSView *view, NSSize padding) {
 }
 
 - (NSView *)makeDevicePage {
-    NSTextField *title = label(@"设备", 27, NSFontWeightBold, NSColor.labelColor);
     self.notice = [NSTextField wrappingLabelWithString:@"正在读取 Tailnet 设备…"];
     self.notice.textColor = NSColor.secondaryLabelColor;
     self.notice.font = [NSFont systemFontOfSize:12];
-    NSStackView *heading = column(@[title, self.notice], 6);
 
     self.search = [[NSSearchField alloc] initWithFrame:NSZeroRect];
     self.search.placeholderString = @"搜索设备名称、IP 或系统";
@@ -177,10 +175,10 @@ static NSBox *card(NSView *view, NSSize padding) {
     self.table.rowHeight = 57;
     self.table.intercellSpacing = NSMakeSize(8, 0);
     self.table.autoresizingMask = NSViewWidthSizable;
-    NSArray *keys = @[@"number", @"name", @"addresses", @"os", @"state", @"latency", @"lastSeen"];
-    NSArray *titles = @[@"序号", @"设备名称", @"Tailscale 地址", @"系统", @"状态", @"Ping", @"上次在线"];
-    NSArray *widths = @[@42, @205, @311, @80, @100, @80, @122];
-    NSArray *minimums = @[@42, @135, @294, @60, @86, @72, @115];
+    NSArray *keys = @[@"number", @"name", @"addresses", @"os", @"state", @"latency"];
+    NSArray *titles = @[@"序号", @"设备名称", @"Tailscale 地址", @"系统", @"状态", @"Ping"];
+    NSArray *widths = @[@42, @205, @311, @80, @140, @80];
+    NSArray *minimums = @[@42, @135, @294, @60, @124, @72];
     for (NSUInteger index = 0; index < keys.count; index++) {
         NSTableColumn *tableColumn = [[NSTableColumn alloc] initWithIdentifier:keys[index]];
         tableColumn.title = titles[index];
@@ -199,10 +197,9 @@ static NSBox *card(NSView *view, NSSize padding) {
     NSBox *tableCard = card(scroll, NSMakeSize(1, 1));
 
     self.deviceCount = label(@"0 台设备", 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
-    NSStackView *page = column(@[heading, toolbar, tableCard, self.deviceCount], 12);
+    NSStackView *page = column(@[self.notice, toolbar, tableCard, self.deviceCount], 12);
     [NSLayoutConstraint activateConstraints:@[
-        [heading.widthAnchor constraintEqualToAnchor:page.widthAnchor],
-        [self.notice.widthAnchor constraintEqualToAnchor:heading.widthAnchor],
+        [self.notice.widthAnchor constraintEqualToAnchor:page.widthAnchor],
         [toolbar.widthAnchor constraintEqualToAnchor:page.widthAnchor],
         [tableCard.widthAnchor constraintEqualToAnchor:page.widthAnchor],
         [tableCard.heightAnchor constraintGreaterThanOrEqualToConstant:120]
@@ -398,7 +395,8 @@ static NSBox *card(NSView *view, NSSize padding) {
     self.accountLogin.stringValue = name.length ? login ?: @"" : @"";
     self.accountName.toolTip = self.accountName.stringValue;
     self.accountLogin.toolTip = self.accountLogin.stringValue;
-    self.notice.stringValue = status[@"error"] ?: snapshot[@"deviceError"] ?: status[@"access"] ?: @"Tailscale 已连接";
+    self.notice.stringValue = status[@"error"] ?: snapshot[@"deviceError"] ?: status[@"access"] ?: @"";
+    self.notice.hidden = self.notice.stringValue.length == 0;
     if (snapshot[@"devices"]) { self.devices = snapshot[@"devices"]; }
     if (snapshot[@"deviceError"]) {
         NSMutableArray *unknown = [NSMutableArray arrayWithCapacity:self.devices.count];
@@ -455,7 +453,6 @@ static NSBox *card(NSView *view, NSSize padding) {
 - (id)tableView:(NSTableView *)tableView objectValueForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
     NSDictionary *device = self.visibleDevices[row];
     if ([tableColumn.identifier isEqualToString:@"number"]) { return [NSString stringWithFormat:@"%ld", (long)row + 1]; }
-    if ([tableColumn.identifier isEqualToString:@"lastSeen"]) { return lastSeenTime(device[@"lastSeen"]); }
     if ([tableColumn.identifier isEqualToString:@"latency"]) {
         if ([device[@"local"] boolValue] || ![device[@"state"] isEqualToString:@"online"]) { return @"—"; }
         NSDictionary *result = self.latencies[device[@"id"] ?: @""];
@@ -520,7 +517,13 @@ static NSBox *card(NSView *view, NSSize padding) {
         badge.alignment = NSLayoutAttributeCenterY;
         badge.spacing = 5;
         [lines addObject:badge];
-    } else if ([tableColumn.identifier isEqualToString:@"number"] || [tableColumn.identifier isEqualToString:@"lastSeen"]) {
+        if (![state isEqualToString:@"online"] && device[@"lastSeen"]) {
+            NSString *seen = lastSeenTime(device[@"lastSeen"]);
+            if (![seen isEqualToString:@"—"]) {
+                [lines addObject:label(seen, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)];
+            }
+        }
+    } else if ([tableColumn.identifier isEqualToString:@"number"]) {
         [lines addObject:label(value, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)];
     } else if (value.length) {
         [lines addObject:label(value, 12, NSFontWeightRegular, NSColor.labelColor)];

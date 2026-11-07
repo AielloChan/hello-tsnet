@@ -202,14 +202,15 @@ int main(void) {
             NSLog(@"Control panel must open an AppKit device window without launching a browser");
             return 1;
         }
-        NSDictionary *status = @{ @"state": @"ready", @"access": @"设备直访已启用",
+        NSDictionary *status = @{ @"state": @"ready",
             @"account": @{ @"name": @"Test User", @"login": @"test@example.com", @"tailnet": @"test.ts.net" },
             @"localDevice": @{ @"id": @"self", @"local": @YES, @"name": @"Hello TSNet", @"dnsName": @"hello-tsnet.tailtest.ts.net",
                 @"addresses": @[@"100.64.0.1", @"fd7a:115c:a1e0::1"], @"os": @"macOS", @"state": @"online" } };
         NSTableView *table = [delegate.panel valueForKey:@"table"];
+        NSTextField *notice = [delegate.panel valueForKey:@"notice"];
         [delegate.panel update:@{ @"status": status, @"deviceError": @"暂时无法读取设备" }];
-        if (table.numberOfRows != 1) {
-            NSLog(@"Local device must remain visible when peer status is unavailable");
+        if (table.numberOfRows != 1 || notice.hidden || ![notice.stringValue isEqualToString:@"暂时无法读取设备"]) {
+            NSLog(@"Unavailable peer status must show a notice and preserve the local row");
             return 1;
         }
         [delegate.panel update:@{
@@ -220,6 +221,10 @@ int main(void) {
                 @{ @"name": @"NAS", @"state": @"offline", @"lastSeen": @"2026-11-05T00:11:22.123Z" }
             ]
         }];
+        if (!notice.hidden || containsLabelText(panel.contentView, @"设备")) {
+            NSLog(@"A ready device page must omit the large title and success notice");
+            return 1;
+        }
         NSTableColumn *nameColumn = [table tableColumnWithIdentifier:@"name"];
         [panel.contentView layoutSubtreeIfNeeded];
         NSTableRowView *localRow = [table rowViewAtRow:0 makeIfNecessary:YES];
@@ -314,13 +319,27 @@ int main(void) {
             return 1;
         }
         NSTableColumn *numberColumn = [table tableColumnWithIdentifier:@"number"];
-        NSTableColumn *lastSeenColumn = [table tableColumnWithIdentifier:@"lastSeen"];
-        NSString *seen = [delegate.panel tableView:table objectValueForTableColumn:lastSeenColumn row:2];
-        if (!table.usesAlternatingRowBackgroundColors || !numberColumn || !lastSeenColumn ||
+        if (!table.usesAlternatingRowBackgroundColors || !numberColumn ||
             ![[delegate.panel tableView:table objectValueForTableColumn:numberColumn row:0] isEqualToString:@"1"] ||
-            ![[delegate.panel tableView:table objectValueForTableColumn:numberColumn row:1] isEqualToString:@"2"] ||
-            !seen.length || [seen isEqualToString:@"—"] || [seen containsString:@"T00:11"]) {
-            NSLog(@"The table must show row numbers, alternating colors and formatted last-seen time");
+            ![[delegate.panel tableView:table objectValueForTableColumn:numberColumn row:1] isEqualToString:@"2"]) {
+            NSLog(@"The table must show row numbers and alternating colors");
+            return 1;
+        }
+        NSInteger stateColumn = [table columnWithIdentifier:@"state"];
+        if (stateColumn < 0 || [table tableColumnWithIdentifier:@"lastSeen"]) {
+            NSLog(@"Last-seen time must share the status column");
+            return 1;
+        }
+        NSView *online = [table viewAtColumn:stateColumn row:1 makeIfNecessary:YES];
+        NSView *offline = [table viewAtColumn:stateColumn row:2 makeIfNecessary:YES];
+        NSStackView *onlineLines = (NSStackView *)online.subviews.firstObject;
+        NSStackView *offlineLines = (NSStackView *)offline.subviews.firstObject;
+        NSView *lastLine = offlineLines.arrangedSubviews.lastObject;
+        NSString *seen = [lastLine isKindOfClass:NSTextField.class] ? ((NSTextField *)lastLine).stringValue : @"";
+        if (!containsLabelText(online, @"在线") || onlineLines.arrangedSubviews.count != 1 ||
+            !containsLabelText(offline, @"离线") || offlineLines.arrangedSubviews.count != 2 ||
+            seen.length != 16 || [seen containsString:@"T"]) {
+            NSLog(@"Only offline status should include a second line with formatted last-seen time");
             return 1;
         }
         NSTextField *loginLabel = [delegate.panel valueForKey:@"accountLogin"];
